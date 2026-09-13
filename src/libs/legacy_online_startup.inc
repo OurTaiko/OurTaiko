@@ -63,4 +63,3 @@
             scores_manager.sync_from_server(global_data.config->network.access_code);
         }
     }
-
