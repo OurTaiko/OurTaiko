@@ -1,6 +1,7 @@
 #include "transition.h"
 #include "../../libs/global_data.h"
 #include <algorithm>
+#include "../../libs/fanmade.h"
 
 Transition::Transition(const std::string& title, const std::string& subtitle, bool is_second) :
     is_second(is_second) {
@@ -20,6 +21,7 @@ Transition::Transition(const std::string& title, const std::string& subtitle, bo
 }
 
 Transition::~Transition() {
+    *cancel_remote = true;
     if (loading_graphic.has_value()) {
         ray::UnloadTexture(loading_graphic.value());
     }
@@ -67,6 +69,16 @@ void Transition::draw_dan(float /*total_offset*/) {
 }
 
 void Transition::start() {
+    if (!is_second) {
+        auto pn = global_data.player_num == PlayerNum::TWO_PLAYER ? PlayerNum::P1 : global_data.player_num;
+        if (remote_players.empty()) remote_players.push_back((int)pn);
+        remote_source = global_data.session_data[remote_players.front()].selected_song;
+        if (fanmade::client().chart(remote_source)) {
+            remote_download = std::async(std::launch::async, [source=remote_source, cancel=cancel_remote] {
+                return fanmade::client().prepare(source, cancel);
+            });
+        }
+    }
     dan_start_ms = get_current_ms();
     rainbow_up->start();
     mini_up->start();
@@ -76,6 +88,25 @@ void Transition::start() {
 }
 
 void Transition::update(double current_ms) {
+    if (remote_download.valid() && remote_download.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        try {
+            auto path = remote_download.get();
+            auto chart = fanmade::client().chart(path);
+            for (int pn : remote_players) {
+                const auto& session = global_data.session_data[pn];
+                if (session.selected_song != remote_source) continue;
+                int diff = session.selected_difficulty;
+                if (!chart || diff < 0 || diff >= 5 || !chart->difficulties[diff])
+                    throw std::runtime_error("DIFFICULTY_REMOVED_BY_AUTHOR");
+            }
+            for (int pn : remote_players) {
+                auto& session = global_data.session_data[pn];
+                if (session.selected_song != remote_source) continue;
+                session.selected_song = path;
+                session.song_hash = "fanmade:" + chart->server + ":" + chart->id + ":" + chart->version + ":" + std::to_string(session.selected_difficulty);
+            }
+        } catch (const std::exception& e) { download_error = e.what(); }
+    }
     call(fn_update, "SongTransition:update", current_ms,
          (double)rainbow_up->attribute, (double)song_info_fade->attribute);
     rainbow_up->update(current_ms);
@@ -86,7 +117,7 @@ void Transition::update(double current_ms) {
 }
 
 bool Transition::is_finished() {
-    return song_info_fade->is_finished;
+    return song_info_fade->is_finished && !remote_download.valid() && download_error.empty();
 }
 
 void Transition::draw_song_info() {
@@ -125,6 +156,12 @@ void Transition::draw_default(float total_offset) {
 }
 
 void Transition::draw() {
+    if (remote_download.valid() || !download_error.empty()) {
+        ray::DrawRectangle(0, 0, global_tex.screen_width, global_tex.screen_height, ray::BLACK);
+        std::string message = *cancel_remote ? "Cancelling download..." : download_error.empty() ? fanmade::client().status() + " - Back: cancel" : download_error + " - Back: return to song select";
+        ray::DrawText(message.c_str(), 40, global_tex.screen_height/2, 24, ray::WHITE);
+        return;
+    }
     float total_offset = 0;
     if (is_second) total_offset = global_tex.skin_config[SC::TRANSITION_OFFSET].y;
     if (dan_color >= 0) {

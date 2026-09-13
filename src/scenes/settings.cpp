@@ -41,7 +41,7 @@ Screens SettingsScreen::on_screen_end(Screens next_screen) {
 
     const std::string& access_code = global_data.config->network.access_code;
     if (!access_code.empty() && scores_manager.player_1_data.username != username_on_entry) {
-        network.update_username(access_code, scores_manager.player_1_data.username);
+        // Legacy profile mutation disconnected: network.update_username(access_code, scores_manager.player_1_data.username);
     }
 
     box_manager.reset();

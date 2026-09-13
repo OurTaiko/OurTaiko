@@ -3,6 +3,8 @@
 #include "navigator.h"
 #include "../../../libs/audio.h"
 #include <thread>
+#include "../../../libs/fanmade.h"
+#include <limits>
 
 namespace {
     double bgm_resume_at   = 0.0;   // 0 = nothing pending
@@ -43,6 +45,22 @@ SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
 }
 
 void SongBox::refresh_scores() {
+    if (auto remote = fanmade::client().chart(path)) {
+        for (int i=0; i<5; ++i) {
+            hashes[i] = "fanmade:" + remote->server + ":" + remote->id + ":" + remote->version + ":" + std::to_string(i);
+            scores[i].reset(); scores_p2[i].reset();
+            if (auto s = fanmade::client().best(path, i)) {
+                // The API has no gauge, combo or scoring-method fields. Display
+                // the submitted counters without inventing crowns or ranks.
+                auto count=[](int64_t n) { return (int)std::min(n,(int64_t)std::numeric_limits<int>::max()); };
+                scores[i] = Score{Crown::NONE, Rank::_NONE, count(s->score), count(s->good),
+                    count(s->ok), count(s->bad), count(s->drumroll), 0};
+            }
+        }
+        if (navigator.is_2p && global_data.first_login_player == PlayerNum::P2)
+            scores.swap(scores_p2);
+        score_history.reset(); return;
+    }
     hashes = scores_manager.get_hashes(path);
 #ifdef SUPPORT_FUMEN
     bool cheap_hash = !std::holds_alternative<FumenParser>(parser.impl);

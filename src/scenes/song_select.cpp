@@ -1,6 +1,7 @@
 #include "song_select.h"
 #include "../libs/input.h"
 #include "../libs/network.h"
+#include "../libs/fanmade.h"
 #include <filesystem>
 
 void SongSelectScreen::on_screen_start() {
@@ -24,7 +25,7 @@ void SongSelectScreen::on_screen_start() {
 
     navigator.hide_dan = hides_dan();
     navigator.is_2p = is_2p_screen();
-    navigator.init(global_data.config->paths.tja_path);
+    navigator.init(fanmade::client().song_paths(global_data.config->paths.tja_path));
 #ifndef __EMSCRIPTEN__
     stats_future = std::async(std::launch::async, [this]() {
         return navigator.get_statistics(global_data.config->paths.tja_path[0]);
@@ -204,7 +205,7 @@ std::optional<Screens> SongSelectScreen::update() {
         apply_sort_window_result();
     }
 
-    poll_song_jump(current_time);
+    // Legacy song-jump polling is intentionally disconnected.
     if (auto join = poll_second_player_join(current_time)) return join;
     if (join_request_ms >= 0.0) {
         clear_input_buffers();
@@ -224,10 +225,20 @@ std::optional<Screens> SongSelectScreen::update() {
         }
     }
 
+    static uint64_t cloud_revision = 0;
+    if (cloud_revision != fanmade::client().revision()) {
+        cloud_revision = fanmade::client().revision(); navigator.refresh_scores();
+    }
     if (screen_init) navigator.update(current_time);
 
     if (game_transition.has_value() && join_request_ms < 0.0) {
         game_transition->update(current_time);
+        if ((game_transition->loading() || !game_transition->error().empty()) && check_key_pressed(global_data.config->keys.back_key)) {
+            if (game_transition->loading()) game_transition->cancel_download();
+            else return on_screen_end(Screens::SONG_SELECT);
+        }
+        if (game_transition->cancelled()) return on_screen_end(Screens::SONG_SELECT);
+        if (game_transition->loading()) return std::nullopt;
         if (game_transition->is_finished()) {
             return on_screen_end(get_game_screen_target());
         }
@@ -272,6 +283,8 @@ Screens SongSelectScreen::on_screen_end(Screens next_screen) {
 }
 
 void SongSelectScreen::draw_overlays() {
+    auto cloud_status = fanmade::client().status();
+    if (!cloud_status.empty()) ray::DrawText(cloud_status.c_str(), 20, 20, 20, ray::WHITE);
     script->draw_overlays(state);
 
     tex.draw_texture(GLOBAL::SONG_NUM_BG, {.x=-(song_num->width-127), .x2=(song_num->width-127), .fade=0.75});

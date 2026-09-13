@@ -221,6 +221,17 @@ Config get_config() {
     config.network.sync_scores = config_file["network"]["sync_scores"].value_or(
         config_file["general"]["sync_scores_on_launch"].value_or(false));
 
+    if (auto servers = config_file["network"]["servers"].as_array()) {
+        for (const auto& node : *servers) {
+            if (!node.is_table()) continue;
+            auto& v = *node.as_table();
+            config.network.servers.push_back({v["name"].value_or("OurTaiko Fanmade"),
+                v["base_url"].value_or("http://127.0.0.1:8080"),
+                v["username"].value_or(""), v["password"].value_or(""),
+                v["http_proxy"].value_or("")});
+        }
+    }
+
     // Parse paths
     if (auto tja_path = config_file["paths"]["tja_path"].as_array()) {
         config.paths.tja_path = parsePathArray(*tja_path);
@@ -339,8 +350,14 @@ void save_config(const Config& config) {
         {"touch_input", config.general.touch_input}
     });
 
+    toml::array servers;
+    for (const auto& server : config.network.servers) {
+        servers.push_back(toml::table{{"name", server.name}, {"base_url", server.base_url},
+            {"username", server.username}, {"password", server.password}, {"http_proxy", server.http_proxy}});
+    }
     // Network
     config_table.insert("network", toml::table{
+        {"servers", std::move(servers)},
         {"access_code", config.network.access_code},
         {"online_play", config.network.online_play},
         {"sync_scores", config.network.sync_scores}
@@ -454,6 +471,14 @@ void save_config(const Config& config) {
         std::ofstream ofs(tmp_path, std::ios::trunc);
         if (!ofs.is_open()) {
             spdlog::error("Failed to save config.toml");
+            return;
+        }
+        // Server passwords remain local to the config, including after saves.
+        std::error_code permission_error;
+        fs::permissions(tmp_path, fs::perms::owner_read | fs::perms::owner_write,
+                        fs::perm_options::replace, permission_error);
+        if (permission_error) {
+            spdlog::error("Failed to protect config file: {}", permission_error.message());
             return;
         }
         ofs << config_table;

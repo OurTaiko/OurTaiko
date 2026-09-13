@@ -147,8 +147,8 @@ void EntryPlayer::handle_input() {
 
                 const std::string& access_code = global_data.config->network.access_code;
                 if (pd->player_id == scores_manager.player_1 && !access_code.empty()) {
-                    network.update_costume(access_code, pd->chara_head_index, pd->chara_body_index,
-                                            pd->chara_cos_index, pd->chara_is_costume);
+                    // Legacy profile mutation disconnected: network.update_costume(access_code, pd->chara_head_index, pd->chara_body_index,
+                    // pd->chara_cos_index, pd->chara_is_costume);
                 }
             }
             costume_menu.reset();

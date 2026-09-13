@@ -32,3 +32,6 @@ YataiDON.wasm
 /build-vita
 /build-ios-*
 /.ios-ffmpeg/
+
+/config.toml.tmp
+/dev-config.toml.tmp

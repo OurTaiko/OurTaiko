@@ -3,6 +3,7 @@
 #include "../libs/scores.h"
 #include "../libs/filesystem.h"
 #include "../libs/song_parser.h"
+#include "../libs/fanmade.h"
 #include "../objects/song_select/file_navigator/navigator.h"
 
 void LoadingScreen::on_screen_start() {
@@ -103,12 +104,15 @@ void LoadingScreen::load_song_hashes() {
         fs::remove(fs::path("scores_pytaiko.db"));
     }
 
+    try {
+        fanmade::client().bootstrap(global_data.config->network.servers, "cache/fanmade");
+    } catch (const std::exception& e) { spdlog::error("Fanmade startup: {}", e.what()); }
     load_navigator();
     loading_complete = true;
 }
 
 void LoadingScreen::load_navigator() {
-    navigator.preload(global_data.config->paths.tja_path);
+    navigator.preload(fanmade::client().song_paths(global_data.config->paths.tja_path));
 }
 
 Screens LoadingScreen::on_screen_end(Screens next_screen) {

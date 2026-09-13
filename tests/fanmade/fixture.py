@@ -1,0 +1,98 @@
+#!/usr/bin/env python3
+"""Run the real C++ client against two isolated HTTP endpoints and a proxy.
+No user accounts, local score databases or copyrighted assets are used.
+"""
+import collections
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
+
+TJA = b'TITLE:Original\nBPM:120\nWAVE:fixture.ogg\nCOURSE:Oni\nLEVEL:8\n#START\n1234,\n#END\nCOURSE:Hard\nLEVEL:4\nSTYLE:Double\n#START P1\n1111,\n#END\n#START P2\n2222,\n#END\n'
+AUDIO = b'OggS synthetic download fixture (protocol test, not decoded)'
+SONG, VERSION = '1'*32, 'a'*32
+counts = collections.Counter()
+stored = {}
+lock = threading.Lock()
+
+def score(endpoint, **changes):
+    s = dict(id=endpoint+'initial', songId=SONG, versionId=VERSION,
+             difficulty='Oni', good=10, ok=2, bad=1,
+             score=700000 if endpoint=='second' else 900000, drumroll=5)
+    s.update(changes)
+    return s
+
+def chart(endpoint):
+    return dict(id=SONG, versionId=VERSION, title='Second' if endpoint=='second' else 'First', subtitle='',
+                titleTranslations={'ja':'日本語タイトル'}, subtitleTranslations={},
+                tjaHash=hashlib.sha256(TJA).hexdigest(), audioHash=hashlib.sha256(AUDIO).hexdigest(),
+                encoding='utf-8', bpm=120, demoStart=0,
+                difficulties=[dict(course='Oni', level=8, blockIndex=0, player='', cloudScoreEligible=True),
+                              dict(course='Hard', level=4, blockIndex=1, player='P1', cloudScoreEligible=False),
+                              dict(course='Hard', level=4, blockIndex=2, player='P2', cloudScoreEligible=False)])
+
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *_): pass
+    def reply(self, data, status=200):
+        data = data if isinstance(data, bytes) else json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+    def do_GET(self): self.handle_request()
+    def do_POST(self): self.handle_request()
+    def handle_request(self):
+        path=urlsplit(self.path).path
+        endpoint='second' if path.startswith('/second/') else 'first'
+        if endpoint=='second': path=path[len('/second'):]
+        with lock:
+            counts[endpoint+':'+path]+=1
+            if self.path.startswith('http://'): counts['proxy']+=1
+        if self.headers.get('Origin') or self.headers.get('Cookie'):
+            return self.reply({'code':'UNEXPECTED_BROWSER_AUTH'},400)
+        if path=='/api/v1/game/login':
+            body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            if body!={'username':'fixture','password':'fixture-password'}: return self.reply({},401)
+            return self.reply({'accessToken':('b' if endpoint=='first' else 'c')*64})
+        if self.headers.get('Authorization')!='Bearer '+('b' if endpoint=='first' else 'c')*64:
+            return self.reply({},401)
+        if path=='/api/v1/game/bootstrap':
+            # A higher old-version score must never overwrite the current score.
+            return self.reply({'charts':[chart(endpoint)],'scores':[score(endpoint),score(endpoint,id='old',versionId='d'*32,score=9999999)]})
+        if path=='/api/v1/charts/'+SONG: return self.reply(chart(endpoint))
+        if path.endswith('/tja'): return self.reply(TJA)
+        if path.endswith('/audio'): return self.reply(AUDIO)
+        if path=='/api/v1/game/scores':
+            body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            assert body['difficulty']=='Oni' and body['versionId']==VERSION
+            assert [body[x] for x in ['good','ok','bad','score','drumroll']]==[12,3,1,999999,9]
+            key=(endpoint,self.headers.get('Idempotency-Key'))
+            assert len(key[1])==64
+            with lock:
+                retry=key in stored
+                if retry: assert stored[key]==body
+                stored[key]=body
+            if not retry: return self.reply({"code":"TEMPORARY_FAILURE_AFTER_COMMIT"},500)
+            return self.reply(score(endpoint,**body,id=key[1]),201)
+        return self.reply({},404)
+
+if __name__=='__main__':
+    server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+    thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
+    base=f'http://127.0.0.1:{server.server_port}'
+    try:
+        with tempfile.TemporaryDirectory(prefix='fanmade-fixture-') as cache:
+            env={**os.environ,'http_proxy':'http://127.0.0.1:1','https_proxy':'http://127.0.0.1:1','ALL_PROXY':'http://127.0.0.1:1','NO_PROXY':'*'}
+            subprocess.run([sys.argv[1],base,cache],env=env,check=True)
+            assert counts['proxy']>0, 'configured proxy unused'
+            assert sum(v for k,v in counts.items() if k.endswith('/tja'))==1, counts
+            assert sum(v for k,v in counts.items() if k.endswith('/audio'))==2, counts
+            assert len(stored)==1, stored
+            print('PASS: proxy routing, empty proxy bypass, exact download counts, version isolation, no DOUBLE upload')
+    finally: server.shutdown()

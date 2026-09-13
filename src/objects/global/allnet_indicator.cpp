@@ -1,5 +1,5 @@
 #include "allnet_indicator.h"
-#include "../../libs/network.h"
+#include "../../libs/fanmade.h"
 
 AllNetIcon::AllNetIcon() {
     if (!load("AllNetIcon", "allnet_indicator", online)) return;
@@ -9,8 +9,8 @@ AllNetIcon::AllNetIcon() {
 
 void AllNetIcon::update(double current_ms)
     {
-        online = network.is_online();
-        call(fn_update, "AllNetIcon:update", current_ms, online, network.is_outdated());
+        online = fanmade::client().online();
+        call(fn_update, "AllNetIcon:update", current_ms, online, false);
     }
 void AllNetIcon::draw(float x, float y)
     {

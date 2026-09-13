@@ -1,4 +1,5 @@
 #include "game.h"
+#include "../libs/fanmade.h"
 #include "../libs/scores.h"
 #include "../libs/input.h"
 #include "../libs/network.h"
@@ -274,9 +275,17 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
     int64_t played_at = unix_now();
     std::string modifiers_json = modifiers_to_json(players[0]->get_modifiers());
     scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score, played_at, modifiers_json);
-    PlayerData pd = scores_manager.get_player_data(player_id).value_or(PlayerData{});
-    if (global_data.config->general.score_method != ScoreMethod::GEN3) {
-        network.submit_score(hash, session_data.selected_difficulty, global_data.config->network.access_code, score, players[0]->input_log, played_at, modifiers_json, pd.chara_is_costume, pd.chara_cos_index);
+    auto score_player = std::find_if(players.begin(), players.end(), [player_num](const auto& p) {
+        return p && p->player_num == player_num;
+    });
+    if (score_player == players.end()) return;
+    const auto mods = (*score_player)->get_modifiers();
+    if (!run_skipped && !mods.auto_play && !mods.skip &&
+        (players.size() == 1 || player_num == global_data.first_login_player)) {
+        fanmade::Score cloud;
+        cloud.good=score.good; cloud.ok=score.ok; cloud.bad=score.bad;
+        cloud.score=score.score; cloud.drumroll=score.drumroll;
+        fanmade::client().submit(session_data.selected_song, session_data.selected_difficulty, cloud);
     }
 }
 

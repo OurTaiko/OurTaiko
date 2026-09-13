@@ -45,6 +45,15 @@ else()
   set(NETWORK_ENABLED OFF)
 endif()
 
+# Fanmade endpoints are runtime TOML settings; they do not need legacy keys.
+option(FANMADE_NETWORK "Enable native OurTaiko Fanmade client" ON)
+if(EMSCRIPTEN)
+  set(FANMADE_NETWORK OFF)
+endif()
+if(FANMADE_NETWORK)
+  set(NETWORK_ENABLED ON)
+endif()
+
 set(DATATABLE_SEED "${_env_DATATABLE_SEED}" CACHE STRING "Decryption seed for the gen 4 datatable")
 set(FUMEN_SEED "${_env_FUMEN_SEED}" CACHE STRING "Decryption seed for gen 4 fumen")
 if(DATATABLE_SEED AND FUMEN_SEED)
@@ -174,6 +183,13 @@ if(NETWORK_ENABLED)
   )
 endif()
 
+if(FANMADE_NETWORK)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE FANMADE_NETWORK)
+endif()
+if(APPLE)
+  target_link_libraries(${PROJECT_NAME} PRIVATE iconv)
+endif()
+
 if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpptrace::cpptrace)
 endif()
@@ -187,6 +203,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE sndfile samplerate)
+if(FANMADE_NETWORK)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE FANMADE_NETWORK)
+endif()
+if(APPLE)
+  target_link_libraries(${PROJECT_NAME} PRIVATE iconv)
+endif()
+
 if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME} PRIVATE rtaudio)
 endif()

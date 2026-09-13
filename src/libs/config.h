@@ -1,6 +1,7 @@
 #pragma once
 
 #include <toml++/toml.h>
+#include "fanmade.h"
 #include <filesystem>
 #include <spdlog/spdlog.h>
 
@@ -26,6 +27,7 @@ struct GeneralConfig {
 };
 
 struct NetworkConfig {
+    std::vector<fanmade::ServerConfig> servers;
     std::string access_code;
     bool online_play;
     bool sync_scores;
