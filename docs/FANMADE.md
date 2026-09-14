@@ -42,13 +42,15 @@ http_proxy = ""
 
 当前版本在启动时获取完整曲库快照；其他设备刚提交的成绩和新增歌曲在重启后同步，已经进入内存的歌曲在加载时取得最新版本。暂未加入定时全量刷新。服务器支持的 Tower/Dan 会以不支持的目录项标记；当前普通选曲仅支持 Easy/Normal/Hard/Oni/Edit。Android 的 Shift-JIS 转码尚未实现，会明确报错；UTF-8 不受影响。浏览器构建默认禁用原生网络模块。
 
-## 构建与旧代码
+## 构建
 
-`FANMADE_NETWORK=ON` 默认启用原生 CPR/curl，服务器地址不再需要编译时旧服务 URL/密钥。旧 `network.cpp`、原成绩导入/导出实现及 `legacy_online_startup.inc` 保留参考，当前启动、资料编辑、远端选曲及结算不再调用它们。旧客户端默认禁用，仅保留测试通过 `NetworkClient::set_enabled` 显式启用；不再依赖游戏配置。归档 `.inc` 引用的旧配置字段仅供历史参考，不参与编译。
+`FANMADE_NETWORK=ON` 默认启用原生 CPR/curl，服务器地址与账号从运行时 TOML 配置读取。设置为 `OFF` 可构建离线版本；浏览器构建自动禁用原生网络。CMake、Android 和 CI 均不再需要旧服务的 URL/认证密钥。旧联网实现、归档、专用测试、远端选曲与批量同步代码已删除；仍被本地成绩保存和跳过操作使用的修改器序列化、按键记录保留在成绩与游玩模块。
 
 ## 验证
 
-2026-09-14 旧联网配置清理的专项检查：使用实际 `config.cpp` 在临时目录验证旧字段兼容、双服务器账号/代理读写、空列表及配置文件权限；使用实际 PyTaikoGreen 模板验证旧选项过滤、其他设置保留、分类顺序与退出入口。旧客户端和保留的测试在启用旧传输的编译条件下通过语法检查。最终 iOS Simulator Release 完整构建通过；本次未进行真机、Android 或 Windows 运行回归。
+2026-09-14 旧联网配置清理的专项检查：使用实际 `config.cpp` 在临时目录验证旧字段兼容、双服务器账号/代理读写、空列表及配置文件权限；使用实际 PyTaikoGreen 模板验证旧选项过滤、其他设置保留、分类顺序与退出入口。最终 iOS Simulator Release 完整构建通过；本次未进行真机、Android 或 Windows 运行回归。
+
+删除旧联网实现后的专项回归：当前 Fanmade 原生夹具通过多服务器登录、代理、版本隔离、下载缓存与损坏修复、成绩提交及重试检查；不定义 `FANMADE_NETWORK`、不链接 CPR 时的原生模块编译和谱面解析检查通过。重新生成 Xcode 工程后的 iOS Simulator Release 完整构建通过。两个 CI workflow 通过 YAML 结构检查，未执行远端 CI；真机、Android 和 Windows 运行回归仍待验证。
 
 - Go HTTP/PostgreSQL 集成测试：原生/浏览器会话隔离、Origin 拒绝、版本核对、幂等提交和曲库/成绩读取。
 - `tests/fanmade/client.cpp` + `fixture.py`：两个 API、HTTP proxy、空代理直连、旧版本成绩隔离、正确 Single 块/DOUBLE 双人块、原生 TJA 音符解析、缓存命中、损坏修复、取消、提交后响应失败及重启后的幂等重试。

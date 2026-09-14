@@ -2,7 +2,6 @@
 #include "../libs/fanmade.h"
 #include "../libs/scores.h"
 #include "../libs/input.h"
-#include "../libs/network.h"
 #include "../libs/script.h"
 #include "../libs/filesystem.h"
 #include <cmath>

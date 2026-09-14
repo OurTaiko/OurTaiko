@@ -24,8 +24,6 @@ endif()
 
 set(CMAKE_SKIP_INSTALL_RULES ON)
 
-set(_env_NETWORK_URL "")
-set(_env_NETWORK_AUTH_KEY "")
 if(EXISTS "${CMAKE_SOURCE_DIR}/.env")
   file(STRINGS "${CMAKE_SOURCE_DIR}/.env" _env_lines)
   foreach(_env_line ${_env_lines})
@@ -37,21 +35,10 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/.env")
   endforeach()
 endif()
 
-set(NETWORK_URL "${_env_NETWORK_URL}" CACHE STRING "Base URL of the server backend")
-set(NETWORK_AUTH_KEY "${_env_NETWORK_AUTH_KEY}" CACHE STRING "Auth key for the server backend")
-if(NETWORK_URL AND NETWORK_AUTH_KEY)
-  set(NETWORK_ENABLED ON)
-else()
-  set(NETWORK_ENABLED OFF)
-endif()
-
-# Fanmade endpoints are runtime TOML settings; they do not need legacy keys.
+# Fanmade endpoints are configured at runtime in TOML.
 option(FANMADE_NETWORK "Enable native OurTaiko Fanmade client" ON)
 if(EMSCRIPTEN)
   set(FANMADE_NETWORK OFF)
-endif()
-if(FANMADE_NETWORK)
-  set(NETWORK_ENABLED ON)
 endif()
 
 set(DATATABLE_SEED "${_env_DATATABLE_SEED}" CACHE STRING "Decryption seed for the gen 4 datatable")
@@ -84,10 +71,10 @@ if(IOS)
   set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
   set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-  if(NETWORK_ENABLED)
+  if(FANMADE_NETWORK)
     message(STATUS "iOS online services enabled (CPR/curl with Apple native TLS)")
   else()
-    message(STATUS "iOS online services disabled: configure NETWORK_URL and NETWORK_AUTH_KEY to enable")
+    message(STATUS "iOS online services disabled: set FANMADE_NETWORK=ON to enable")
   endif()
 endif()
 
@@ -174,21 +161,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     miniz
 )
 
-if(NETWORK_ENABLED)
-  target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE
-    NETWORK_URL="${NETWORK_URL}"
-    NETWORK_AUTH_KEY="${NETWORK_AUTH_KEY}"
-    CLIENT_VERSION="${PROJECT_VERSION}"
-  )
-endif()
-
-if(FANMADE_NETWORK)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE FANMADE_NETWORK)
-endif()
-if(APPLE)
-  target_link_libraries(${PROJECT_NAME} PRIVATE iconv)
-endif()
 
 if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpptrace::cpptrace)
@@ -204,6 +176,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 target_link_libraries(${PROJECT_NAME} PRIVATE sndfile samplerate)
 if(FANMADE_NETWORK)
+  target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
   target_compile_definitions(${PROJECT_NAME} PRIVATE FANMADE_NETWORK)
 endif()
 if(APPLE)
@@ -227,10 +200,6 @@ if(SUPPORT_FUMEN)
 endif()
 
 include(cmake/platform.cmake)
-option(YATAIDON_BUILD_NETWORK_TESTS "Build isolated Simulator network integration checks" OFF)
-if(YATAIDON_BUILD_NETWORK_TESTS)
-  add_subdirectory(tests/network)
-endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"

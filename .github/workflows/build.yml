@@ -91,9 +91,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DCMAKE_C_COMPILER=gcc \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         run: cmake --build build --config Release
@@ -217,9 +215,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DCMAKE_C_COMPILER=gcc \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         run: cmake --build build --config Release
@@ -315,9 +311,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
-            -DCMAKE_EXE_LINKER_FLAGS="-L$(brew --prefix)/lib" \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_EXE_LINKER_FLAGS="-L$(brew --prefix)/lib"
 
       - name: Build
         run: cmake --build build --config Release
@@ -446,9 +440,6 @@ jobs:
 
       - name: Build Release APK
         working-directory: android
-        env:
-          NETWORK_URL: ${{ secrets.NETWORK_URL }}
-          NETWORK_AUTH_KEY: ${{ secrets.NETWORK_AUTH_KEY }}
         run: ./gradlew assembleRelease --no-daemon
 
       - name: Upload APK
@@ -525,13 +516,8 @@ jobs:
           key: ios-ffmpeg-${{ runner.os }}-${{ runner.arch }}-iphoneos-arm64-${{ env.IOS_DEPLOYMENT_TARGET }}-${{ steps.toolchain.outputs.xcode }}-${{ hashFiles('tools/build_ffmpeg_ios.sh') }}
 
       - name: Build unsigned iOS app
-        env:
-          NETWORK_URL: ${{ secrets.NETWORK_URL }}
-          NETWORK_AUTH_KEY: ${{ secrets.NETWORK_AUTH_KEY }}
         run: |
-          ./build_ios.sh device \
-            -DNETWORK_URL="$NETWORK_URL" \
-            -DNETWORK_AUTH_KEY="$NETWORK_AUTH_KEY"
+          ./build_ios.sh device
 
       - name: Package unsigned IPA
         run: |

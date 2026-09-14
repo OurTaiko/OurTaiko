@@ -419,18 +419,18 @@ else()
 endif()
 
 # Prebuilt OpenSSL for Android -- needed by libgit2 (always, on Android) and
-# by cpr/curl when NETWORK_ENABLED. Set up once, shared by both.
+# by cpr/curl when FANMADE_NETWORK. Set up once, shared by both.
 if(ANDROID AND NOT EMSCRIPTEN)
   set(ANDROID_OPENSSL_PREFIX "" CACHE PATH "Prebuilt OpenSSL for Android (include/ + lib/), see tools/build_openssl_android.sh")
   if(NOT ANDROID_OPENSSL_PREFIX)
-    message(FATAL_ERROR "Android builds require -DANDROID_OPENSSL_PREFIX=<path> (used by libgit2, and by cpr/curl when NETWORK_ENABLED). Run tools/build_openssl_android.sh first.")
+    message(FATAL_ERROR "Android builds require -DANDROID_OPENSSL_PREFIX=<path> (used by libgit2, and by cpr/curl when FANMADE_NETWORK). Run tools/build_openssl_android.sh first.")
   endif()
   set(OPENSSL_ROOT_DIR "${ANDROID_OPENSSL_PREFIX}" CACHE PATH "" FORCE)
   set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
   list(APPEND CMAKE_FIND_ROOT_PATH "${ANDROID_OPENSSL_PREFIX}")
 endif()
 
-if(NETWORK_ENABLED)
+if(FANMADE_NETWORK)
   if(IOS)
     # Build CPR's pinned curl for the selected iOS SDK. Secure Transport uses
     # Apple's system trust store; do not discover host OpenSSL or CA file paths.

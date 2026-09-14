@@ -82,9 +82,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DCMAKE_C_COMPILER=gcc \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         run: cmake --build build --config Debug
@@ -171,9 +169,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DCMAKE_C_COMPILER=gcc \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         run: cmake --build build --config Release
@@ -237,9 +233,7 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
-            -DCMAKE_EXE_LINKER_FLAGS="-L$(brew --prefix)/lib" \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_EXE_LINKER_FLAGS="-L$(brew --prefix)/lib"
 
       - name: Build
         run: cmake --build build --config Debug

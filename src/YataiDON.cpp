@@ -14,7 +14,6 @@
 #include "libs/input.h"
 #include "libs/logging.h"
 #include "libs/camera_utils.h"
-#include "libs/network.h"
 #include "libs/fanmade.h"
 #include "libs/screen.h"
 #include "libs/script.h"
@@ -456,8 +455,6 @@ int main(int argc, char* argv[]) {
         scores_manager.player_1_data = *pd;
     if (auto pd = scores_manager.get_player_data(scores_manager.player_2))
         scores_manager.player_2_data = *pd;
-
-    // Legacy online startup is archived in libs/legacy_online_startup.inc.
 
     Screens initial_screen = check_args(argc, argv);
 

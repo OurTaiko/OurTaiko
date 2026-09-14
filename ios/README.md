@@ -72,12 +72,10 @@ provisioning profile, or App Store Connect credentials are required. There is no
 TestFlight or App Store upload step. Sign the downloaded IPA with your own signing
 tool and credentials before installing it on an iPhone or iPad.
 
-The job reuses the existing repository secrets:
-
-- `GITEA_USER` and `GITEA_TOKEN` to fetch the private skin submodules.
-- `NETWORK_URL` and `NETWORK_AUTH_KEY` to enable the online client. When either is
-  absent, the build uses the offline implementation; runtime network switches
-  still follow the configuration described below.
+The job uses the existing `GITEA_USER` and `GITEA_TOKEN` repository secrets to
+fetch the private skin submodules. Fanmade networking is enabled by default and
+uses the installed app's TOML configuration; no API credentials are embedded in
+the build.
 
 Download the `YataiDON-iOS` artifact from the workflow run after the iOS job
 succeeds. Once all platform builds succeed, the existing `latest` GitHub Release
@@ -147,40 +145,18 @@ if the problem recurs.
 
 ## Online services
 
-iOS uses the existing Hiroba client for registration, profile and score sync,
-remote song selection, and online/version indicators. CPR and its pinned curl
-are built separately for Device and Simulator. HTTPS uses Apple's Secure Transport
-and system trust store, with certificate verification enabled; no Android CA
-bundle or host macOS OpenSSL installation is needed.
+iOS uses OurTaiko Fanmade for chart discovery, file downloads, and score sync.
+CPR and its pinned curl are built separately for Device and Simulator. HTTPS uses
+Apple's Secure Transport and system trust store with certificate verification
+required; no Android CA bundle or host macOS OpenSSL installation is needed.
 
-Configure the same backend values used by the other platforms in an untracked
-repository-root `.env` file:
-
-```dotenv
-NETWORK_URL=https://your-test-backend.example
-NETWORK_AUTH_KEY=your-backend-key
-```
-
-Reconfigure after changing these values. CMake caches them, so clear just those
-two entries to reload `.env` (preserve your signing team and Bundle ID):
-
-```sh
-IOS_DEVELOPMENT_TEAM=YOUR_TEAM_ID \
-IOS_BUNDLE_IDENTIFIER=com.yourname.yataidon \
-./build_ios.sh device -UNETWORK_URL -UNETWORK_AUTH_KEY
-```
-
-Without both values, the offline implementation is built. In the installed app's
-Documents `config.toml`, set `[network] online_play = true` to enable requests;
-set `sync_scores = true` if you also want startup score downloads, then restart.
-Leave `access_code` empty for first-time registration, or use your own existing
-code. Existing configurations are preserved on upgrade, so rebuilding alone does
-not turn these switches on. Local gameplay/saves remain available offline.
-
-The [network integration checks](../tests/network/README.md) exercise the actual
-client against an isolated fixture and test HTTPS trust on the Simulator. Real
-server credentials and physical-device sync still need end-to-end validation.
-Optional Fumen support still requires the same seeds as other platforms.
+Networking is enabled by default (`FANMADE_NETWORK=ON`). Configure each endpoint
+under `[[network.servers]]` in the installed app's Documents `config.toml`, then
+restart. Each server has its own name, base URL, username, password, and optional
+HTTP proxy. See [Fanmade integration](../docs/FANMADE.md) for a complete example,
+caching and upload behavior, and the current native client fixture commands.
+Local gameplay and saves remain available offline. Optional Fumen support still
+requires the same seeds as other platforms.
 
 Platform references: [SDL's iOS integration](https://wiki.libsdl.org/SDL3/README-ios)
 and [CMake Apple cross-compilation](https://cmake.org/cmake/help/latest/manual/cmake-toolchains.7.html#cross-compiling-for-ios-tvos-visionos-or-watchos).

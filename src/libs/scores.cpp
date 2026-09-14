@@ -1,8 +1,29 @@
 #include "scores.h"
 #include "color_utils.h"
-#include "network.h"
+#include <rapidjson/document.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
 #include "song_parser.h"
 #include <numeric>
+
+std::string modifiers_to_json(const Modifiers& m) {
+    rapidjson::Document doc;
+    doc.SetObject();
+    rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
+
+    doc.AddMember("auto_play", m.auto_play, allocator);
+    doc.AddMember("speed", m.speed, allocator);
+    doc.AddMember("display", m.display, allocator);
+    doc.AddMember("inverse", m.inverse, allocator);
+    doc.AddMember("random", m.random, allocator);
+    doc.AddMember("subdiff", m.subdiff, allocator);
+
+    rapidjson::StringBuffer buffer;
+    rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+    doc.Accept(writer);
+
+    return buffer.GetString();
+}
 
 ScoresManager::ScoresManager(const fs::path& db_path) {
     if (sqlite3_open(db_path.string().c_str(), &db_fsd) != SQLITE_OK) {
@@ -316,63 +337,6 @@ void ScoresManager::py_taiko_import(const fs::path& old_db_path) {
     if (imported > 0) load_score_cache();
 }
 
-void ScoresManager::export_to_hiroba(const std::string& access_code, int player_id) {
-    sqlite3_stmt* stmt;
-    const char* query =
-        "SELECT hash, difficulty, crown, rank, score, good, ok, bad, drumroll, max_combo, played_at, modifiers "
-        "FROM scores WHERE player_id = ? AND hash IS NOT NULL AND hash != '';";
-    if (sqlite3_prepare_v2(db_fsd, query, -1, &stmt, nullptr) != SQLITE_OK) {
-        spdlog::error("export_to_hiroba: failed to prepare statement: {}", sqlite3_errmsg(db_fsd));
-        return;
-    }
-    sqlite3_bind_int(stmt, 1, player_id);
-
-    int count = 0;
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        const unsigned char* hash_text = sqlite3_column_text(stmt, 0);
-        std::string hash = hash_text ? reinterpret_cast<const char*>(hash_text) : "";
-        if (hash.empty()) continue;
-
-        Score s;
-        int difficulty = sqlite3_column_int(stmt, 1);
-        s.crown     = static_cast<Crown>(sqlite3_column_int(stmt, 2));
-        s.rank      = static_cast<Rank>(sqlite3_column_int(stmt, 3));
-        s.score     = sqlite3_column_int(stmt, 4);
-        s.good      = sqlite3_column_int(stmt, 5);
-        s.ok        = sqlite3_column_int(stmt, 6);
-        s.bad       = sqlite3_column_int(stmt, 7);
-        s.drumroll  = sqlite3_column_int(stmt, 8);
-        s.max_combo = sqlite3_column_int(stmt, 9);
-        int64_t played_at = sqlite3_column_int64(stmt, 10);
-        const unsigned char* modifiers_text = sqlite3_column_text(stmt, 11);
-        std::string modifiers_json = modifiers_text ? reinterpret_cast<const char*>(modifiers_text) : "{}";
-
-        std::map<double, InputLogType> input_log;
-        network.submit_score(hash, difficulty, access_code, s, input_log, played_at, modifiers_json, false, -1);
-        count++;
-    }
-    sqlite3_finalize(stmt);
-    spdlog::info("export_to_hiroba: submitted {} scores", count);
-}
-
-int ScoresManager::sync_from_server(const std::string& access_code) {
-    if (access_code.empty()) return 0;
-
-    int updated = 0;
-    for (RemoteScore& rs : network.fetch_scores(access_code)) {
-        auto local = get_score(rs.hash, rs.difficulty, player_1);
-        bool remote_is_better = !local ||
-            rs.score.crown > local->crown ||
-            (rs.score.crown == local->crown && rs.score.score > local->score);
-        if (remote_is_better) {
-            save_score(rs.hash, rs.difficulty, player_1, rs.score, unix_now(), "{}");
-            updated++;
-        }
-    }
-    spdlog::info("sync_from_server: updated {} scores from hiroba", updated);
-    return updated;
-}
-
 std::optional<Score> ScoresManager::get_score(std::string& hash, int difficulty, int player_id) {
     std::lock_guard<std::mutex> lock(maps_mutex);
     auto it = score_cache.find(std::make_tuple(hash, difficulty, player_id));
@@ -427,9 +391,6 @@ void ScoresManager::add_path_binding(const fs::path& path, const std::array<std:
     path_to_hashes[path] = hashes;
     std::string single = std::accumulate(hashes.begin(), hashes.end(), std::string{});
     if (!single.empty()) single_hash_to_path[single] = path;
-    for (const std::string& hash : hashes) {
-        if (!hash.empty()) diff_hash_to_path[hash] = path;
-    }
 }
 
 std::optional<fs::path> ScoresManager::get_path_by_hash(const std::string& single_hash) {
@@ -437,13 +398,6 @@ std::optional<fs::path> ScoresManager::get_path_by_hash(const std::string& singl
     std::lock_guard<std::mutex> lock(maps_mutex);
     auto it = single_hash_to_path.find(single_hash);
     if (it != single_hash_to_path.end()) return it->second;
-    return std::nullopt;
-}
-
-std::optional<fs::path> ScoresManager::get_path_by_diff_hash(const std::string& diff_hash) {
-    std::lock_guard<std::mutex> lock(maps_mutex);
-    auto it = diff_hash_to_path.find(diff_hash);
-    if (it != diff_hash_to_path.end()) return it->second;
     return std::nullopt;
 }
 

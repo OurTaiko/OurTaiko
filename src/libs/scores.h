@@ -10,6 +10,8 @@ inline int64_t unix_now() {
         std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
+std::string modifiers_to_json(const Modifiers& modifiers);
+
 struct PlayerData {
     int player_id            = 0;
     std::string username     = "";
@@ -61,7 +63,6 @@ private:
     mutable std::mutex maps_mutex;
     std::unordered_map<fs::path, std::array<std::string, 5>> path_to_hashes;
     std::unordered_map<std::string, fs::path> single_hash_to_path;
-    std::unordered_map<std::string, fs::path> diff_hash_to_path;
     std::map<std::tuple<std::string, int, int>, Score> score_cache;
     void load_score_cache();
 public:
@@ -71,15 +72,12 @@ public:
     PlayerData player_2_data;
     ScoresManager(const fs::path& db_path);
     void py_taiko_import(const fs::path& old_db_path);
-    void export_to_hiroba(const std::string& access_code, int player_id);
-    int sync_from_server(const std::string& access_code);
     std::optional<Score> get_score(std::string& hash, int difficulty, int player_id);
     Score save_score(std::string& hash, int difficulty, int player_id, Score score, int64_t played_at, const std::string& modifiers_json);
     void add_path_binding(const fs::path& path, const std::array<std::string, 5>& hashes);
     std::array<std::string, 5> get_hashes(const fs::path& path);
     std::string get_single_hash(const fs::path& path);
     std::optional<fs::path> get_path_by_hash(const std::string& single_hash);
-    std::optional<fs::path> get_path_by_diff_hash(const std::string& diff_hash);
     void add_song(const std::array<std::string, 5>& hash, const std::string& title, const std::string& subtitle);
     void remap_hashes(const std::unordered_map<std::string, std::string>& old_to_new);
     std::optional<DanRecord> get_dan_record(int player_id, const std::string& course_title);
