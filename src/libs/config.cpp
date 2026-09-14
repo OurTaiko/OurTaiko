@@ -1,6 +1,9 @@
 #include "config.h"
 #include "ray.h"
 #include <algorithm>
+#ifdef PLATFORM_IOS
+#include "../platform/ios_network_settings.h"
+#endif
 
 std::string getKeyString(int key_code) {
     // Handle alphanumeric keys
@@ -183,6 +186,21 @@ static std::vector<fs::path> parsePathArray(const toml::array& arr) {
     return result;
 }
 
+static std::vector<fanmade::ServerConfig> parse_network_servers(const toml::table& config_file) {
+    std::vector<fanmade::ServerConfig> result;
+    if (auto servers = config_file["network"]["servers"].as_array()) {
+        for (const auto& node : *servers) {
+            if (!node.is_table()) continue;
+            auto& v = *node.as_table();
+            result.push_back({v["name"].value_or("OurTaiko Fanmade"),
+                v["base_url"].value_or("http://127.0.0.1:8080"),
+                v["username"].value_or(""), v["password"].value_or(""),
+                v["http_proxy"].value_or("")});
+        }
+    }
+    return result;
+}
+
 Config get_config() {
     fs::path config_path = fs::exists("dev-config.toml") ?
                             fs::path("dev-config.toml") :
@@ -214,16 +232,13 @@ Config get_config() {
     config.general.player_2_id = config_file["general"]["player_2_id"].value_or(1);
     config.general.touch_input = config_file["general"]["touch_input"].value_or(false);
 
-    if (auto servers = config_file["network"]["servers"].as_array()) {
-        for (const auto& node : *servers) {
-            if (!node.is_table()) continue;
-            auto& v = *node.as_table();
-            config.network.servers.push_back({v["name"].value_or("OurTaiko Fanmade"),
-                v["base_url"].value_or("http://127.0.0.1:8080"),
-                v["username"].value_or(""), v["password"].value_or(""),
-                v["http_proxy"].value_or("")});
-        }
-    }
+#ifdef PLATFORM_IOS
+    if (ios_network_settings_need_migration())
+        ios_initialize_network_settings(parse_network_servers(config_file));
+    config.network.servers = ios_network_servers();
+#else
+    config.network.servers = parse_network_servers(config_file);
+#endif
 
     // Parse paths
     if (auto tja_path = config_file["paths"]["tja_path"].as_array()) {
@@ -343,6 +358,7 @@ void save_config(const Config& config) {
         {"touch_input", config.general.touch_input}
     });
 
+#ifndef PLATFORM_IOS
     toml::array servers;
     for (const auto& server : config.network.servers) {
         servers.push_back(toml::table{{"name", server.name}, {"base_url", server.base_url},
@@ -352,6 +368,7 @@ void save_config(const Config& config) {
     config_table.insert("network", toml::table{
         {"servers", std::move(servers)}
     });
+#endif
 
     // Paths
     toml::array tja_path_array;
@@ -463,7 +480,7 @@ void save_config(const Config& config) {
             spdlog::error("Failed to save config.toml");
             return;
         }
-        // Server passwords remain local to the config, including after saves.
+        // Restrict the file to its owner; non-iOS builds also store server passwords here.
         std::error_code permission_error;
         fs::permissions(tmp_path, fs::perms::owner_read | fs::perms::owner_write,
                         fs::perm_options::replace, permission_error);

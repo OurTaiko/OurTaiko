@@ -150,13 +150,24 @@ CPR and its pinned curl are built separately for Device and Simulator. HTTPS use
 Apple's Secure Transport and system trust store with certificate verification
 required; no Android CA bundle or host macOS OpenSSL installation is needed.
 
-Networking is enabled by default (`FANMADE_NETWORK=ON`). Configure each endpoint
-under `[[network.servers]]` in the installed app's Documents `config.toml`, then
-restart. Each server has its own name, base URL, username, password, and optional
-HTTP proxy. See [Fanmade integration](../docs/FANMADE.md) for a complete example,
-caching and upload behavior, and the current native client fixture commands.
-Local gameplay and saves remain available offline. Optional Fumen support still
-requires the same seeds as other platforms.
+Networking is enabled by default (`FANMADE_NETWORK=ON`). Configure up to five
+independent endpoints in **Settings → Apps → YataiDON**, then fully restart the
+game. Each server page contains an enable switch, name, base URL, username,
+secure password field, and optional HTTP proxy. New installations start with all
+servers disabled; server 1 has the OurTaiko Fanmade public URL prefilled.
+
+On the first upgrade, existing TOML servers are imported once (up to five), unless
+the user has already configured system settings. Subsequent iOS online reads use
+NSUserDefaults only; disabling every server does not restore old TOML settings.
+Saving ordinary game settings on iOS does not write online credentials back to
+TOML. Other platforms continue reading and writing `network.servers` in TOML.
+Other iOS game settings remain in Documents/config.toml.
+
+See [Fanmade integration](../docs/FANMADE.md) for caching, score upload behavior,
+and native fixture commands. Local gameplay and saves remain available offline.
+Optional Fumen support still requires the same seeds as other platforms.
+The Settings.bundle is a signed app resource and is never copied into Documents.
+
 
 Platform references: [SDL's iOS integration](https://wiki.libsdl.org/SDL3/README-ios)
 and [CMake Apple cross-compilation](https://cmake.org/cmake/help/latest/manual/cmake-toolchains.7.html#cross-compiling-for-ios-tvos-visionos-or-watchos).
