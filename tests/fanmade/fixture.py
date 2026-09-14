@@ -33,7 +33,7 @@ def chart(endpoint):
     return dict(id=SONG, versionId=VERSION, title='Second' if endpoint=='second' else 'First', subtitle='',
                 titleTranslations={'ja':'日本語タイトル'}, subtitleTranslations={},
                 tjaHash=hashlib.sha256(TJA).hexdigest(), audioHash=hashlib.sha256(AUDIO).hexdigest(),
-                encoding='utf-8', bpm=120, demoStart=0,
+                encoding='utf-8', bpm=120, demoStart=0, audioName='fixture.ogg' if endpoint=='second' else 'Mistletoe.MP3',
                 difficulties=[dict(course='Oni', level=8, blockIndex=0, player='', cloudScoreEligible=True),
                               dict(course='Hard', level=4, blockIndex=1, player='P1', cloudScoreEligible=False),
                               dict(course='Hard', level=4, blockIndex=2, player='P2', cloudScoreEligible=False)])
@@ -101,8 +101,8 @@ if __name__=='__main__':
             env={**os.environ,'http_proxy':'http://127.0.0.1:1','https_proxy':'http://127.0.0.1:1','ALL_PROXY':'http://127.0.0.1:1','NO_PROXY':'*'}
             subprocess.run([sys.argv[1],base,cache],env=env,check=True)
             assert counts['proxy']>0, 'configured proxy unused'
-            assert sum(v for k,v in counts.items() if k.endswith('/tja'))==1, counts
-            assert sum(v for k,v in counts.items() if k.endswith('/audio'))==2, counts
+            assert sum(v for k,v in counts.items() if k.endswith('/tja'))==2, counts
+            assert sum(v for k,v in counts.items() if k.endswith('/audio'))==3, counts
             assert len(stored)==1, stored
             print('PASS: proxy routing, empty proxy bypass, exact download counts, version isolation, no DOUBLE upload')
     finally: server.shutdown()

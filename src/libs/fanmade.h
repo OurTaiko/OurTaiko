@@ -22,7 +22,7 @@ struct Difficulty {
     std::string player;
 };
 struct Chart {
-    std::string server, id, version, title, subtitle, tja_hash, audio_hash, encoding;
+    std::string server, id, version, title, subtitle, tja_hash, audio_hash, encoding, audio_name;
     std::map<std::string, std::string> titles, subtitles;
     double bpm = 120, demo_start = 0;
     std::array<std::optional<Difficulty>, 5> difficulties;

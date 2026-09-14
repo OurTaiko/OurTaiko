@@ -72,7 +72,7 @@ Score score_from(const rapidjson::Value& v) {
 }
 Chart chart_from(const rapidjson::Value& v,const std::string& server) {
     Chart c; c.server=server; c.id=str(v,"id"); c.version=str(v,"versionId"); c.title=str(v,"title"); c.subtitle=str(v,"subtitle");
-    c.tja_hash=str(v,"tjaHash"); c.audio_hash=str(v,"audioHash"); c.encoding=str(v,"encoding");
+    c.tja_hash=str(v,"tjaHash"); c.audio_hash=str(v,"audioHash"); c.encoding=str(v,"encoding"); c.audio_name=str(v,"audioName");
     if(!hex_id(c.id,32)||!hex_id(c.version,32)||!hex_id(c.tja_hash,64)||!hex_id(c.audio_hash,64)) throw std::runtime_error("API_ID_INVALID");
     c.titles["en"]=c.title; c.subtitles["en"]=c.subtitle;
     for(auto pair:{std::make_pair("titleTranslations",&c.titles),std::make_pair("subtitleTranslations",&c.subtitles)}) {
@@ -94,6 +94,12 @@ Chart chart_from(const rapidjson::Value& v,const std::string& server) {
         if(!slot || (!slot->cloud&&cloud)) slot=diff;
     }
     return c;
+}
+std::string cached_audio_name(const Chart& c) {
+    const auto extension=upper(fs::path(c.audio_name).extension().string());
+    if(extension==".MP3") return "audio.mp3";
+    if(extension==".OGG") return "audio.ogg";
+    throw std::runtime_error("API_AUDIO_FORMAT_UNSUPPORTED");
 }
 std::string title_headers(const Chart& c) {
     std::string out;
@@ -185,7 +191,7 @@ std::string sha256(const std::string& bytes) { return crypto::to_hex(crypto::sha
 
 std::string playable_tja(const std::string& utf8,const Chart& chart) {
     std::istringstream input(utf8.substr(utf8.compare(0,3,"\xef\xbb\xbf")==0?3:0));
-    std::vector<std::string> globals,headers; std::string line,body,output=title_headers(chart)+"WAVE:audio.ogg\n";
+    std::vector<std::string> globals,headers; std::string line,body,output=title_headers(chart)+"WAVE:"+cached_audio_name(chart)+"\n";
     bool in_block=false,seen_course=false; int block=-1; std::map<int,Difficulty> wanted; std::map<int,bool> found;
     for(auto& d:chart.difficulties) if(d) {
         wanted[d->block_index]=*d;
@@ -342,7 +348,14 @@ fs::path Client::prepare(const fs::path& path, std::shared_ptr<std::atomic_bool>
         write(file,bytes);
     };
     ensure(dir/"original.tja",c.tja_hash,"tja",4*1024*1024);
-    ensure(dir/"audio.ogg",c.audio_hash,"audio",256*1024*1024);
+    const auto audio_path=dir/cached_audio_name(c);
+    const auto old_audio_path=dir/"audio.ogg";
+    // Older clients stored MP3 bytes under .ogg. Reuse only a verified cache.
+    if(audio_path!=old_audio_path && !fs::exists(audio_path) && fs::exists(old_audio_path)
+       && sha256(read(old_audio_path))==c.audio_hash) {
+        fs::rename(old_audio_path,audio_path);
+    }
+    ensure(audio_path,c.audio_hash,"audio",256*1024*1024);
     auto playable=dir/"play.tja";
     write(playable,playable_tja(to_utf8(read(dir/"original.tja"),c.encoding),c));
     { std::lock_guard lock(impl->mutex); impl->charts[path_key(playable)]=c; impl->charts[path_key(path)]=c; impl->revision++; }

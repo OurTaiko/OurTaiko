@@ -11,12 +11,20 @@ void check(bool condition,const char* message) { if(!condition) throw std::runti
 std::string read_file(const fs::path& path) { std::ifstream f(path); return {std::istreambuf_iterator<char>(f),{}}; }
 void parser_tests() {
     check(sha256("abc")=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","SHA-256 vector");
-    Chart c; c.titles["en"]="Renamed"; c.subtitles["zh"]="中文副标题";
+    Chart c; c.audio_name="fixture.ogg"; c.titles["en"]="Renamed"; c.subtitles["zh"]="中文副标题";
     c.difficulties[3]=Difficulty{"Oni",8,2,true,""};
     auto tja=playable_tja("TITLE:Original\nBPM:120\nWAVE:../external.ogg\nBGMOVIE:/secret.mp4\nCOURSE:Oni\nLEVEL:8\nSTYLE:Double\n#START P1\n1111,\n#END\n#START P2\n2222,\n#END\nCOURSE:Oni\nLEVEL:8\nBALLOON:3,4\n#START\n1234,\n#END\n",c);
     check(tja.find("1234,")!=std::string::npos && tja.find("1111,")==std::string::npos && tja.find("2222,")==std::string::npos,"select exact single block");
     check(tja.find("BALLOON:3,4")!=std::string::npos && tja.find("BGMOVIE")==std::string::npos && tja.find("../external")==std::string::npos,"gameplay headers and confined assets");
     check(tja.find("TITLE:Renamed")!=std::string::npos && tja.find("SUBTITLEZH:中文副标题")!=std::string::npos,"metadata overrides");
+    check(tja.find("WAVE:audio.ogg\n")!=std::string::npos,"OGG cache reference");
+    c.audio_name="../Mistletoe.MP3";
+    auto mp3=playable_tja("COURSE:Oni\n#START\n1,\n#END\nCOURSE:Oni\n#START\n2,\n#END\nCOURSE:Oni\n#START\n3,\n#END\n",c);
+    check(mp3.find("WAVE:audio.mp3\n")!=std::string::npos && mp3.find("../")==std::string::npos,"MP3 case normalization and confined cache reference");
+    c.audio_name="bad.wav";
+    bool unsupported=false; try { playable_tja("",c); } catch(...) { unsupported=true; }
+    check(unsupported,"unsupported audio suffix rejected");
+    c.audio_name="fixture.ogg";
     c.difficulties[3]=Difficulty{"Oni",8,0,false,"P1"};
     c.blocks={*c.difficulties[3],Difficulty{"Oni",8,1,false,"P2"}};
     auto dual=playable_tja("COURSE:Oni\nLEVEL:8\n#START P1\n1111,\n#END\n#START P2\n2222,\n#END\n",c);
@@ -56,23 +64,41 @@ int main(int argc,char** argv) {
         }
     }
     auto path=paths.front();
+    if(!real) {
+        for(const auto& candidate:paths) {
+            if(client.chart(candidate)->title=="First") path=candidate;
+            else {
+                auto ogg=client.prepare(candidate);
+                TJAParser parsed_ogg(ogg);
+                check(parsed_ogg.metadata.wave.filename()=="audio.ogg" && fs::exists(parsed_ogg.metadata.wave),"OGG audio reference remains playable");
+            }
+        }
+    }
     auto cancelled=std::make_shared<std::atomic_bool>(true);
     bool cancellation_worked=false;
     try { client.prepare(path,cancelled); } catch(const std::exception&) { cancellation_worked=true; }
     check(cancellation_worked,"cancelled download must not start");
     auto playable=client.prepare(path);
-    check(fs::exists(playable)&&fs::exists(playable.parent_path()/"audio.ogg"),"assets ready");
+    check(fs::exists(playable),"TJA ready");
     TJAParser parsed(playable);
+    const auto audio_path=parsed.metadata.wave;
+    check(fs::exists(audio_path),"parsed TJA resolves downloaded audio");
+    if(!real) check(audio_path.filename()=="audio.mp3","MP3 audio keeps decoder-compatible suffix");
     for(int i=0;i<5;i++) if(client.chart(path)->difficulties[i]) {
         auto [notes, normal, expert, master] = parsed.notes_to_position(i);
         check(!notes.notes.empty(), "actual game parser produced empty notes");
     }
-    auto first=fs::last_write_time(playable.parent_path()/"audio.ogg");
+    auto first=fs::last_write_time(audio_path);
     client.prepare(path);
-    check(fs::last_write_time(playable.parent_path()/"audio.ogg")==first,"hash hit avoids download");
-    { std::ofstream file(playable.parent_path()/"audio.ogg",std::ios::trunc); file<<"corrupted"; }
+    check(fs::last_write_time(audio_path)==first,"hash hit avoids download");
+    if(!real) {
+        fs::rename(audio_path,playable.parent_path()/"audio.ogg");
+        client.prepare(path);
+        check(fs::last_write_time(audio_path)==first && !fs::exists(playable.parent_path()/"audio.ogg"),"verified old MP3 cache renamed without download");
+    }
+    { std::ofstream file(audio_path,std::ios::trunc); file<<"corrupted"; }
     client.prepare(path);
-    check(sha256(read_file(playable.parent_path()/"audio.ogg"))==client.chart(path)->audio_hash,"corruption repaired");
+    check(sha256(read_file(audio_path))==client.chart(path)->audio_hash,"corruption repaired");
     auto chart=client.chart(path); int diff=3;
     if(real) {
         diff=-1; for(int i=0;i<5;i++) if(chart->difficulties[i]&&chart->difficulties[i]->cloud) { diff=i; break; }
