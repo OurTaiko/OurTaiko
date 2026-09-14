@@ -35,6 +35,13 @@ int main(int argc,char** argv) {
     std::string password=real?std::getenv("FANMADE_TEST_PASSWORD"):"fixture-password";
     std::vector<ServerConfig> configs{{"OurTaiko Fanmade",base,username,password,""}};
     if(!real) configs.push_back({"Second server",base+"/second",username,password,base});
+    if(!real) {
+        for(const auto* variant : {"missing-combo", "null-combo"}) {
+            Client invalid;
+            invalid.bootstrap({{"Invalid score",base+"/"+variant,username,password,""}},cache/variant);
+            check(!invalid.online()&&invalid.status().find("API_NUMBER_INVALID")!=std::string::npos,"reject missing or null maximum combo");
+        }
+    }
     Client client; client.bootstrap(configs,cache);
     check(client.online(),client.status().c_str());
     auto roots=client.song_paths({}); check(roots.size()==1,"catalog root");
@@ -43,7 +50,10 @@ int main(int argc,char** argv) {
     check(paths.size()>=(real?1u:2u),"all server catalogs");
     for(auto& path:paths) {
         auto chart=client.chart(path); check(chart.has_value(),"registered chart");
-        if(!real) check(client.best(path,3)->score==(chart->title=="Second"?700000:900000),"server score isolation");
+        if(!real) {
+            check(client.best(path,3)->score==(chart->title=="Second"?700000:900000),"server score isolation");
+            check(client.best(path,3)->max_combo==(chart->title=="Second"?6:8),"server maximum combo isolation");
+        }
     }
     auto path=paths.front();
     auto cancelled=std::make_shared<std::atomic_bool>(true);
@@ -68,7 +78,7 @@ int main(int argc,char** argv) {
         diff=-1; for(int i=0;i<5;i++) if(chart->difficulties[i]&&chart->difficulties[i]->cloud) { diff=i; break; }
         check(diff>=0,"single difficulty available");
     }
-    Score score; score.good=12; score.ok=3; score.bad=1; score.score=999999; score.drumroll=9;
+    Score score; score.good=12; score.ok=3; score.bad=1; score.score=999999; score.drumroll=9; score.max_combo=11;
     client.submit(playable,diff,score);
     for(int n=0;n<40;n++) {
         client.update(); auto best=client.best(path,diff);
@@ -84,14 +94,14 @@ int main(int argc,char** argv) {
             if(best&&best->score==score.score) break;
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
-        check(resumed.best(path,diff)&&resumed.best(path,diff)->score==score.score,"durable idempotent retry after restart");
+        check(resumed.best(path,diff)&&resumed.best(path,diff)->score==score.score&&resumed.best(path,diff)->max_combo==11,"durable idempotent retry preserves maximum combo after restart");
     } else {
-        check(client.best(path,diff)&&client.best(path,diff)->score==score.score,client.status().c_str());
+        check(client.best(path,diff)&&client.best(path,diff)->score==score.score&&client.best(path,diff)->max_combo==11,client.status().c_str());
     }
     if(!real) {
         Score double_score=score; client.submit(playable,2,double_score);
         check(!client.best(path,2),"double scores excluded");
     }
-    std::cout<<"PASS: catalog, isolated scores, download, cache hit, corruption recovery, score submission\n";
+    std::cout<<"PASS: catalog, isolated scores, download, cache hit, corruption recovery, score and maximum combo submission\n";
  } catch(const std::exception& e) { std::cerr<<"FAIL: "<<e.what()<<"\n"; return 1; }
 }

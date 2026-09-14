@@ -24,7 +24,8 @@ lock = threading.Lock()
 def score(endpoint, **changes):
     s = dict(id=endpoint+'initial', songId=SONG, versionId=VERSION,
              difficulty='Oni', good=10, ok=2, bad=1,
-             score=700000 if endpoint=='second' else 900000, drumroll=5)
+             score=700000 if endpoint=='second' else 900000, drumroll=5,
+             max_combo=6 if endpoint=='second' else 8)
     s.update(changes)
     return s
 
@@ -49,6 +50,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self): self.handle_request()
     def handle_request(self):
         path=urlsplit(self.path).path
+        variant=''
+        for prefix in ('missing-combo', 'null-combo'):
+            if path.startswith('/'+prefix+'/'):
+                variant=prefix
+                path=path[len(prefix)+1:]
+                break
         endpoint='second' if path.startswith('/second/') else 'first'
         if endpoint=='second': path=path[len('/second'):]
         with lock:
@@ -64,14 +71,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply({},401)
         if path=='/api/v1/game/bootstrap':
             # A higher old-version score must never overwrite the current score.
-            return self.reply({'charts':[chart(endpoint)],'scores':[score(endpoint),score(endpoint,id='old',versionId='d'*32,score=9999999)]})
+            scores=[score(endpoint),score(endpoint,id='old',versionId='d'*32,score=9999999)]
+            if variant=='missing-combo': del scores[0]['max_combo']
+            if variant=='null-combo': scores[0]['max_combo']=None
+            return self.reply({'charts':[chart(endpoint)],'scores':scores})
         if path=='/api/v1/charts/'+SONG: return self.reply(chart(endpoint))
         if path.endswith('/tja'): return self.reply(TJA)
         if path.endswith('/audio'): return self.reply(AUDIO)
         if path=='/api/v1/game/scores':
             body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             assert body['difficulty']=='Oni' and body['versionId']==VERSION
-            assert [body[x] for x in ['good','ok','bad','score','drumroll']]==[12,3,1,999999,9]
+            assert [body[x] for x in ['good','ok','bad','score','drumroll','max_combo']]==[12,3,1,999999,9,11]
             key=(endpoint,self.headers.get('Idempotency-Key'))
             assert len(key[1])==64
             with lock:

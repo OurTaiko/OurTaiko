@@ -66,7 +66,9 @@ void put(rapidjson::Document& d,const char* k,const std::string& v) { d.AddMembe
 void put(rapidjson::Document& d,const char* k,int64_t v) { d.AddMember(rapidjson::Value(k,d.GetAllocator()),rapidjson::Value(v),d.GetAllocator()); }
 Score score_from(const rapidjson::Value& v) {
     Score s; s.id=str(v,"id"); s.song=str(v,"songId"); s.version=str(v,"versionId"); s.difficulty=str(v,"difficulty");
-    s.good=number(v,"good"); s.ok=number(v,"ok"); s.bad=number(v,"bad"); s.score=number(v,"score"); s.drumroll=number(v,"drumroll"); return s;
+    s.good=number(v,"good"); s.ok=number(v,"ok"); s.bad=number(v,"bad"); s.score=number(v,"score"); s.drumroll=number(v,"drumroll");
+    s.max_combo=number(v,"max_combo");
+    return s;
 }
 Chart chart_from(const rapidjson::Value& v,const std::string& server) {
     Chart c; c.server=server; c.id=str(v,"id"); c.version=str(v,"versionId"); c.title=str(v,"title"); c.subtitle=str(v,"subtitle");
@@ -349,7 +351,7 @@ fs::path Client::prepare(const fs::path& path, std::shared_ptr<std::atomic_bool>
 void Client::submit(const fs::path& path,int difficulty,const Score& score) {
     auto c=chart(path); if(!c||difficulty<0||difficulty>=5||!c->difficulties[difficulty]||!c->difficulties[difficulty]->cloud) return;
     rapidjson::Document d; d.SetObject(); put(d,"songId",c->id); put(d,"versionId",c->version); put(d,"difficulty",courses[difficulty]);
-    put(d,"good",score.good); put(d,"ok",score.ok); put(d,"bad",score.bad); put(d,"score",score.score); put(d,"drumroll",score.drumroll);
+    put(d,"good",score.good); put(d,"ok",score.ok); put(d,"bad",score.bad); put(d,"score",score.score); put(d,"drumroll",score.drumroll); put(d,"max_combo",score.max_combo);
     try { write(impl->cache/"pending"/c->server/(random_key()+".json"),encode(d)); impl->retry={}; update(); }
     catch(const std::exception& err) { impl->status(std::string("Score queue error: ")+err.what()); }
 }

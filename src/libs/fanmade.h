@@ -30,7 +30,7 @@ struct Chart {
 };
 struct Score {
     std::string id, song, version, difficulty;
-    int64_t good = 0, ok = 0, bad = 0, score = 0, drumroll = 0;
+    int64_t good = 0, ok = 0, bad = 0, score = 0, drumroll = 0, max_combo = 0;
 };
 // No rendering or game globals: the HTTP/cache client can be integration-tested
 // against a fixture server without starting raylib or accessing local scores.db.

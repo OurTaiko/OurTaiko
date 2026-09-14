@@ -50,11 +50,11 @@ void SongBox::refresh_scores() {
             hashes[i] = "fanmade:" + remote->server + ":" + remote->id + ":" + remote->version + ":" + std::to_string(i);
             scores[i].reset(); scores_p2[i].reset();
             if (auto s = fanmade::client().best(path, i)) {
-                // The API has no gauge, combo or scoring-method fields. Display
+                // The API has no gauge or scoring-method fields. Display
                 // the submitted counters without inventing crowns or ranks.
                 auto count=[](int64_t n) { return (int)std::min(n,(int64_t)std::numeric_limits<int>::max()); };
                 scores[i] = Score{Crown::NONE, Rank::_NONE, count(s->score), count(s->good),
-                    count(s->ok), count(s->bad), count(s->drumroll), 0};
+                    count(s->ok), count(s->bad), count(s->drumroll), count(s->max_combo)};
             }
         }
         if (navigator.is_2p && global_data.first_login_player == PlayerNum::P2)
