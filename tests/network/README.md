@@ -1,9 +1,12 @@
-# iOS network integration checks
+# Legacy Hiroba network integration checks
 
 These checks compile the game's real `src/libs/network.cpp` as an isolated iOS
-Simulator executable. They use a loopback fixture, a fixed test-only signing key,
-and in-memory player configuration. They never read game saves or production
-credentials. The optional target is excluded from ordinary builds.
+Simulator executable. They use a loopback fixture and a fixed test-only signing
+key. The legacy client defaults to disabled; only this test explicitly enables
+it with `NetworkClient::set_enabled`. It no longer reads TOML configuration.
+These checks never read game saves or production credentials. The optional target
+is excluded from ordinary builds. Current gameplay uses OurTaiko Fanmade; see
+`tests/fanmade` for that integration.
 
 In one terminal, start the fixture (restart it before each test run):
 

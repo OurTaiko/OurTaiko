@@ -1,6 +1,5 @@
 #include "song_select.h"
 #include "../libs/input.h"
-#include "../libs/network.h"
 #include "../libs/fanmade.h"
 #include <filesystem>
 
@@ -105,21 +104,6 @@ void SongSelectScreen::handle_input_search() {
         if (blank) return;
         navigator.current_search = *result;
         navigator.load_current_directory(navigator.get_current_item()->path);
-    }
-}
-
-void SongSelectScreen::poll_song_jump(double current_ms) {
-    static constexpr double SONG_JUMP_POLL_INTERVAL_MS = 3000.0;
-    const std::string& access_code = global_data.config->network.access_code;
-
-    if (!access_code.empty() && state == SongSelectState::BROWSING &&
-        current_ms - last_song_jump_poll_ms >= SONG_JUMP_POLL_INTERVAL_MS) {
-        last_song_jump_poll_ms = current_ms;
-        network.poll_song_jump(access_code);
-    }
-
-    if (auto hash = network.take_song_jump_result()) {
-        navigator.jump_to_song(*hash);
     }
 }
 

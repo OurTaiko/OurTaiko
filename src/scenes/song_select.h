@@ -51,9 +51,6 @@ protected:
     virtual void handle_input_diff_sorting();
     virtual void handle_input_search();
 
-    void poll_song_jump(double current_ms);
-    double last_song_jump_poll_ms = -1e9;
-
     virtual bool allows_second_player_join() { return true; }
     double join_request_ms = -1.0;
     PlayerNum join_existing_seat = PlayerNum::P1;

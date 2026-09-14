@@ -214,13 +214,6 @@ Config get_config() {
     config.general.player_2_id = config_file["general"]["player_2_id"].value_or(1);
     config.general.touch_input = config_file["general"]["touch_input"].value_or(false);
 
-    config.network.access_code = config_file["network"]["access_code"].value_or(
-        config_file["general"]["access_code"].value_or(""));
-    config.network.online_play = config_file["network"]["online_play"].value_or(
-        config_file["general"]["online_play"].value_or(false));
-    config.network.sync_scores = config_file["network"]["sync_scores"].value_or(
-        config_file["general"]["sync_scores_on_launch"].value_or(false));
-
     if (auto servers = config_file["network"]["servers"].as_array()) {
         for (const auto& node : *servers) {
             if (!node.is_table()) continue;
@@ -357,10 +350,7 @@ void save_config(const Config& config) {
     }
     // Network
     config_table.insert("network", toml::table{
-        {"servers", std::move(servers)},
-        {"access_code", config.network.access_code},
-        {"online_play", config.network.online_play},
-        {"sync_scores", config.network.sync_scores}
+        {"servers", std::move(servers)}
     });
 
     // Paths

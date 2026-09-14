@@ -58,10 +58,6 @@ inline ConfigRef get_config_ref(const std::string& path) {
     if (path == "general/touch_input")              return &c->general.touch_input;
     // paths
     if (path == "paths/skin")                        return &c->paths.skin;
-    // network
-    if (path == "network/online_play")              return &c->network.online_play;
-    if (path == "network/access_code")              return &c->network.access_code;
-    if (path == "network/sync_scores")              return &c->network.sync_scores;
     // nameplate_1p → player 1 data cache
     if (path == "nameplate_1p/name")     return &scores_manager.player_1_data.username;
     if (path == "nameplate_1p/title")    return &scores_manager.player_1_data.title;

@@ -26,7 +26,7 @@ http_proxy = ""
 
 `base_url` 是 API 服务的根地址，客户端添加 `/api/v1/...`。`name` 是选曲中的文件夹名。相同 API 地址和用户名视为同一个配置；不同账号的成绩和缓存相互隔离。空 `http_proxy` 显式禁用代理，包括环境变量中的代理。HTTP/HTTPS 下载禁止自动跳转，并保留 TLS 证书校验。公网服务请使用 HTTPS。
 
-账号密码保存在本机配置中，Bearer token 只在进程内保存，到期自动重新登录。含密码的配置不要提交到 Git；仓库已忽略 `dev-config.toml`。原 `online_play`、`sync_scores` 和 `access_code` 不再控制新接入。
+账号密码保存在本机配置中，Bearer token 只在进程内保存，到期自动重新登录。含密码的配置不要提交到 Git；仓库已忽略 `dev-config.toml`。原 `online_play`、`sync_scores` 和 `access_code` 已从配置结构、读写和设置绑定中移除。旧文件含这些字段仍可读取，保存配置时会自动清除；`network.servers` 中的服务器及账号配置继续保留。游戏载入皮肤设置模板时会过滤这三个旧选项及因此变空的分类，兼容已安装的旧皮肤。
 
 ## 生命周期
 
@@ -44,9 +44,11 @@ http_proxy = ""
 
 ## 构建与旧代码
 
-`FANMADE_NETWORK=ON` 默认启用原生 CPR/curl，服务器地址不再需要编译时旧服务 URL/密钥。旧 `network.cpp`、原成绩导入/导出实现及 `legacy_online_startup.inc` 保留参考，当前启动、资料编辑、远端选曲及结算不再调用它们。
+`FANMADE_NETWORK=ON` 默认启用原生 CPR/curl，服务器地址不再需要编译时旧服务 URL/密钥。旧 `network.cpp`、原成绩导入/导出实现及 `legacy_online_startup.inc` 保留参考，当前启动、资料编辑、远端选曲及结算不再调用它们。旧客户端默认禁用，仅保留测试通过 `NetworkClient::set_enabled` 显式启用；不再依赖游戏配置。归档 `.inc` 引用的旧配置字段仅供历史参考，不参与编译。
 
 ## 验证
+
+2026-09-14 旧联网配置清理的专项检查：使用实际 `config.cpp` 在临时目录验证旧字段兼容、双服务器账号/代理读写、空列表及配置文件权限；使用实际 PyTaikoGreen 模板验证旧选项过滤、其他设置保留、分类顺序与退出入口。旧客户端和保留的测试在启用旧传输的编译条件下通过语法检查。最终 iOS Simulator Release 完整构建通过；本次未进行真机、Android 或 Windows 运行回归。
 
 - Go HTTP/PostgreSQL 集成测试：原生/浏览器会话隔离、Origin 拒绝、版本核对、幂等提交和曲库/成绩读取。
 - `tests/fanmade/client.cpp` + `fixture.py`：两个 API、HTTP proxy、空代理直连、旧版本成绩隔离、正确 Single 块/DOUBLE 双人块、原生 TJA 音符解析、缓存命中、损坏修复、取消、提交后响应失败及重启后的幂等重试。

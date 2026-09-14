@@ -1,4 +1,5 @@
-// Archived startup integration, retained for reference. Not included by the game.
+// Archived legacy integration, retained for reference. Not included by the game.
+// Config fields referenced below have been removed from the active game.
     const bool net_ok = network.probe_online();
     if (net_ok && global_data.config->network.access_code.empty()) {
         std::string access_code = network.register_user(scores_manager.player_1_data.username);
@@ -63,3 +64,19 @@
             scores_manager.sync_from_server(global_data.config->network.access_code);
         }
     }
+
+// Former SongSelectScreen remote song-jump helper.
+void SongSelectScreen::poll_song_jump(double current_ms) {
+    static constexpr double SONG_JUMP_POLL_INTERVAL_MS = 3000.0;
+    const std::string& access_code = global_data.config->network.access_code;
+
+    if (!access_code.empty() && state == SongSelectState::BROWSING &&
+        current_ms - last_song_jump_poll_ms >= SONG_JUMP_POLL_INTERVAL_MS) {
+        last_song_jump_poll_ms = current_ms;
+        network.poll_song_jump(access_code);
+    }
+
+    if (auto hash = network.take_song_jump_result()) {
+        navigator.jump_to_song(*hash);
+    }
+}

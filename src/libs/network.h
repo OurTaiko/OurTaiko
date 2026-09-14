@@ -34,6 +34,12 @@ std::string modifiers_to_json(const Modifiers& modifiers);
 
 class NetworkClient {
 public:
+    // Legacy transport only. The game never enables it; retained tests opt in.
+    void set_enabled(bool enabled) {
+        enabled_ = enabled;
+        if (!enabled) online = false;
+    }
+
     void update(double current_ms);
 
     bool is_online() const { return online; }
@@ -67,6 +73,9 @@ public:
     std::vector<RemoteScore> fetch_scores(const std::string& access_code);
 
 private:
+    bool network_enabled() const { return enabled_; }
+    bool enabled_ = false;
+
     void check_heartbeat();
 
     bool online = false;

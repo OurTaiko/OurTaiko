@@ -4,8 +4,6 @@
 #include <stdexcept>
 #include <thread>
 
-GlobalData global_data;
-
 static void require(bool ok, const char* message) {
     if (!ok) throw std::runtime_error(message);
 }
@@ -21,10 +19,8 @@ static void wait_for(Predicate done) {
 
 int main() {
     try {
-        Config config{};
-        global_data.config = &config;
         require(!network.probe_online(), "disabled networking must stay offline");
-        config.network.online_play = true;
+        network.set_enabled(true);
         require(network.probe_online(), "health probe");
         const auto code = network.register_user("iOS 测试 & +");
         require(code == "test-access", "registration/signature/Unicode encoding");
@@ -73,7 +69,7 @@ int main() {
         require(!network.probe_online(), "unreachable backend");
         cpr::Post(cpr::Url{"http://127.0.0.1:18765/test/online"});
         require(network.probe_online(), "reconnection");
-        config.network.online_play = false;
+        network.set_enabled(false);
         network.update(60000);
         require(!network.is_online() && network.register_user("disabled").empty(), "offline toggle");
 

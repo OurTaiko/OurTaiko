@@ -2,7 +2,6 @@
 #include <thread>
 #include "scores.h"
 #include "color_utils.h"
-#include "global_data.h"
 #include "sha256.h"
 #include <rapidjson/document.h>
 #include <rapidjson/stringbuffer.h>
@@ -164,10 +163,6 @@ cpr::SslOptions android_ca() {
 #endif
 
 }  // namespace
-
-static bool network_enabled() {
-    return global_data.config && global_data.config->network.online_play;
-}
 
 static std::string network_url(const std::string& endpoint) {
     std::string base = NETWORK_URL;
