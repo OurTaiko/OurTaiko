@@ -15,6 +15,7 @@ OurTaiko.exe
 /.cmake-deps
 /Skins/*
 /.claude
+.idea/
 .version
 /android/local.properties
 /android/keystore.properties
