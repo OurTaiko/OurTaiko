@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
-project(YataiDON VERSION 1.0.2 LANGUAGES C CXX)
+project(OurTaiko VERSION 1.0.2 LANGUAGES C CXX)
+set(PROJECT_AUTHOR "OurTaiko")
 
 cmake_policy(SET CMP0002 NEW)  # Logical target names must be globally unique
 cmake_policy(SET CMP0079 NEW)  # Allow target_link_libraries() everywhere
@@ -63,7 +64,7 @@ if(IOS)
     endif()
   endforeach()
   if(CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "16.3")
-    message(FATAL_ERROR "YataiDON requires iOS 16.3+ for C++20 floating-point formatting")
+    message(FATAL_ERROR "OurTaiko requires iOS 16.3+ for C++20 floating-point formatting")
   endif()
   # Never resolve macOS Homebrew libraries while cross-compiling.
   set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
@@ -107,6 +108,21 @@ else()
   add_executable(${PROJECT_NAME} ${CppFiles} ${HeaderFiles})
 endif()
 add_dependencies(${PROJECT_NAME} skin_config_gen texture_ids_gen)
+
+# Ship attribution with local desktop builds as well as CI release archives.
+if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/NOTICE"
+      "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+    VERBATIM)
+endif()
+
+if(WIN32)
+  enable_language(RC)
+  configure_file(windows/OurTaiko.rc.in "${CMAKE_BINARY_DIR}/OurTaiko.rc" @ONLY)
+  target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/OurTaiko.rc")
+endif()
 
 if(MINGW)
   target_link_options(${PROJECT_NAME} PRIVATE -static-libgcc -static-libstdc++ -static)

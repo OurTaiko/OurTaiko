@@ -10,7 +10,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3-static
 # Objective-C categories in static SDL must be retained by the linker.
 target_link_options(${PROJECT_NAME} PRIVATE -ObjC)
 
-set(IOS_BUNDLE_IDENTIFIER "com.yataidon.app" CACHE STRING "iOS application bundle identifier")
+set(IOS_BUNDLE_IDENTIFIER "org.ourtaiko.fanmade" CACHE STRING "iOS application bundle identifier")
 set(IOS_DEVELOPMENT_TEAM "" CACHE STRING "Apple development team for signing")
 set_target_properties(${PROJECT_NAME} PROPERTIES
   OBJCXX_STANDARD 20

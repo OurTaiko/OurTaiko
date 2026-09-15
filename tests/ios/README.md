@@ -33,7 +33,7 @@ offline, iOS reading system settings, other platforms reading/writing TOML, and
 iOS saves not copying online credentials into TOML.
 
 Device check: build and install without uninstalling the existing app, launch
-once, then open Settings → Apps → YataiDON. Verify all five pages, masked password
+once, then open Settings → Apps → OurTaiko. Verify all five pages, masked password
 entry and the imported server. Change an enabled server or account in Settings,
 fully restart the game and check the corresponding song folder. Never include
 real passwords or preference dumps in committed fixtures or logs.

@@ -9,7 +9,7 @@ BUILD_DIR="build-em"
 emcmake cmake -S . -B "$BUILD_DIR" -G Ninja
 cmake --build "$BUILD_DIR" -- -j"${JOBS:-$(( $(nproc) / 2 ))}"
 
-cp "$BUILD_DIR/bin/YataiDON.html" "$BUILD_DIR/bin/YataiDON.js" \
-   "$BUILD_DIR/bin/YataiDON.wasm" "$BUILD_DIR/bin/YataiDON.data" .
+cp "$BUILD_DIR/bin/OurTaiko.html" "$BUILD_DIR/bin/OurTaiko.js" \
+   "$BUILD_DIR/bin/OurTaiko.wasm" "$BUILD_DIR/bin/OurTaiko.data" .
 
-echo "Build complete: YataiDON.html"
+echo "Build complete: OurTaiko.html"

@@ -1,12 +1,14 @@
-<img src="/docs/logo.png">
+# OurTaiko
+
+**Author and maintainer: OurTaiko.** Based on YataiDON by **Yono (Yonokid)**.
 
 A TJA player and Taiko simulator written in C++ using the [raylib](https://www.raylib.com/) library.
 
-![License](https://img.shields.io/github/license/Yonokid/YataiDON)
+![License](https://img.shields.io/badge/license-GPLv3-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-blue)
-[![GitHub Stars](https://img.shields.io/github/stars/Yonokid/YataiDON?style=flat&label=stars)](https://github.com/Yonokid/YataiDON/stargazers)
+[![GitHub Stars](https://img.shields.io/github/stars/OurTaiko/YataiDON?style=flat&label=stars)](https://github.com/OurTaiko/YataiDON/stargazers)
 [![Discord Members](https://img.shields.io/discord/722513061419810946.svg?label=Discord&logo=discord)](https://discord.gg/XHcVYKW)
-[![Builds](https://github.com/Yonokid/YataiDON/actions/workflows/build.yml/badge.svg)](https://github.com/Yonokid/YataiDON/actions/workflows/build.yml)
+[![Builds](https://github.com/OurTaiko/YataiDON/actions/workflows/build.yml/badge.svg)](https://github.com/OurTaiko/YataiDON/actions/workflows/build.yml)
 
 ## Features
 
@@ -49,20 +51,35 @@ A: Change your `device_type` in game settings to `WDM-KS`, `WASAPI`, or `ASIO` i
 
 ### Pre-built Binaries
 
-Download the latest release for your operating system from the [releases page](https://github.com/Yonokid/YataiDON/releases).
+Download the latest release for your operating system from the [releases page](https://github.com/OurTaiko/YataiDON/releases).
 
 #### Windows
 1. Install the [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) from Microsoft
-2. Run `YataiDON.exe`
+2. Run `OurTaiko.exe`
 
 #### Linux
-1. Run `YataiDON.bin`
+1. Run `./OurTaiko`
 
 #### Android
-1. Install `YataiDON-Android.apk` (enable "install from unknown sources" if needed)
+1. Install `OurTaiko-Android.apk` (enable "install from unknown sources" if needed)
 2. Place assets in `sdcard/YataiDON`. Specifically, you will need `Skins`, `Songs`, and `config.toml`.
 
+#### macOS
+1. Extract `OurTaiko-macOS.zip` and run `./OurTaiko` from its directory.
+
+#### iOS
+1. Download `OurTaiko-iOS-unsigned.ipa`, sign it for your device, and install it (see the [iOS guide](ios/README.md)).
+
+The display name and build products use OurTaiko. Both Android and iOS use
+`org.ourtaiko.fanmade` as the application ID. Android launches through
+`org.ourtaiko.fanmade.OurTaikoActivity`. The new application ID installs separately
+from the original app; existing private app data is not transferred automatically.
+Android continues to read shared assets from `/sdcard/YataiDON`. The GitHub
+repository currently remains `OurTaiko/YataiDON`.
+
 ## Building from Source
+
+The wiki links below are the original upstream build guides.
 
 - [Linux](https://github.com/Yonokid/YataiDON/wiki/Linux)
 - [macOS](https://github.com/Yonokid/YataiDON/wiki/Mac-OS)
@@ -83,16 +100,20 @@ Download the latest release for your operating system from the [releases page](h
 ## Contributing
 
 Contributions are welcome! Please keep in mind:
-- Check the [issues page](https://github.com/Yonokid/YataiDON/issues) for enhancements and bugs before starting work
+- Check the [issues page](https://github.com/OurTaiko/YataiDON/issues) for enhancements and bugs before starting work
 - Feel free to open new issues for bugs or feature requests
 
 ## Known Issues
 
-See the [issues page](https://github.com/Yonokid/YataiDON/issues) or the Discord for current bugs and planned enhancements.
+See the [issues page](https://github.com/OurTaiko/YataiDON/issues) or the Discord for current bugs and planned enhancements.
 
 ## License
 
-This project is licensed under the terms specified in the LICENSE file.
+OurTaiko is a modified version of [YataiDON](https://github.com/Yonokid/YataiDON),
+originally authored by Yono (Yonokid). It retains the original GNU General Public
+License, version 3, in [LICENSE](LICENSE). Original author attribution and third-party
+notices are preserved; see [NOTICE](NOTICE). OurTaiko is the author and maintainer
+of this modified version. Release packages include both files.
 
 ## Acknowledgments
 

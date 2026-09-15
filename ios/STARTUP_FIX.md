@@ -86,7 +86,7 @@
 - `load_skin()` 内配置、全局纹理、脚本、字体和音频设备初始化各自的结束时间。
 - `LoadingScreen` 扫描开始、`loading_complete` 置位和渐变完成时间。若要测首帧，还需单独记录首次 `EndDrawing()`，并结合外部录屏区分 CPU 提交与屏幕呈现。
 
-用 `./build_ios.sh simulator` 构建，`xcrun simctl install` 安装，`xcrun simctl launch --terminate-running-process --stdout=/tmp/startup.out --stderr=/tmp/startup.err <模拟器 UUID> com.yataidon.app` 重复启动。重定向路径位于模拟器的 `data/tmp`，不是宿主机 `/tmp`。对比时保持资源、配置、构建类型一致，区分首次安装、首次启动和资源已存在的重复启动；不要卸载应用来测量已有用户数据的启动场景。测量后移除计时代码并重新构建。
+用 `./build_ios.sh simulator` 构建，`xcrun simctl install` 安装，`xcrun simctl launch --terminate-running-process --stdout=/tmp/startup.out --stderr=/tmp/startup.err <模拟器 UUID> org.ourtaiko.fanmade` 重复启动。重定向路径位于模拟器的 `data/tmp`，不是宿主机 `/tmp`。对比时保持资源、配置、构建类型一致，区分首次安装、首次启动和资源已存在的重复启动；不要卸载应用来测量已有用户数据的启动场景。测量后移除计时代码并重新构建。
 
 真机空目录复制计时的复建方法：
 

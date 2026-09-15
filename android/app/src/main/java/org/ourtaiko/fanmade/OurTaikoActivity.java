@@ -1,4 +1,4 @@
-package com.yataidon.app;
+package org.ourtaiko.fanmade;
 
 import android.content.Intent;
 import android.net.Uri;
@@ -12,7 +12,7 @@ import android.view.WindowInsetsController;
 
 import org.libsdl.app.SDLActivity;
 
-public class YataiDONActivity extends SDLActivity {
+public class OurTaikoActivity extends SDLActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -53,9 +53,9 @@ public class YataiDONActivity extends SDLActivity {
         }
     }
 
-    // SDL3 is statically linked into libYataiDON.so, so we only load our lib.
+    // SDL3 is statically linked into libOurTaiko.so, so we only load our lib.
     @Override
     protected String[] getLibraries() {
-        return new String[] { "YataiDON" };
+        return new String[] { "OurTaiko" };
     }
 }

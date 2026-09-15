@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# YataiDON Release Build Script
+# OurTaiko Release Build Script
 # Builds the project in Release mode and copies the executable to root
 
 set -e  # Exit on error
 
-echo "Building YataiDON (Release)..."
+echo "Building OurTaiko (Release)..."
 echo ""
 
 # Clean and build
@@ -16,14 +16,15 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -G Ninja \
 cmake --build build -j"${JOBS:-$(( $(nproc) / 2 ))}"
 
 # Copy executable to root directory
-if [ -f build/bin/YataiDON ]; then
+if [ -f build/bin/OurTaiko ]; then
     echo ""
     echo "Copying executable to root directory..."
-    cp build/bin/YataiDON ./YataiDON
-    chmod +x ./YataiDON
-    echo "Build complete! Executable is ready at ./YataiDON"
+    cp build/bin/OurTaiko ./OurTaiko
+    cp build/bin/LICENSE build/bin/NOTICE .
+    chmod +x ./OurTaiko
+    echo "Build complete! Executable is ready at ./OurTaiko"
 else
-    echo "Error: Executable not found at build/bin/YataiDON"
+    echo "Error: Executable not found at build/bin/OurTaiko"
     exit 1
 fi
 

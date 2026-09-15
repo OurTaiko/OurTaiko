@@ -10,8 +10,8 @@ bin
 include
 lib
 build
-YataiDON
-YataiDON.exe
+/OurTaiko
+OurTaiko.exe
 /.cmake-deps
 /Skins/*
 /.claude
@@ -24,10 +24,10 @@ YataiDON.exe
 /build-android-arm64
 /.android-ffmpeg
 /.android-openssl
-YataiDON.data
-YataiDON.html
-YataiDON.js
-YataiDON.wasm
+OurTaiko.data
+OurTaiko.html
+OurTaiko.js
+OurTaiko.wasm
 /build-em
 /build-vita
 /build-ios-*
@@ -35,3 +35,11 @@ YataiDON.wasm
 
 /config.toml.tmp
 /dev-config.toml.tmp
+
+# Legacy build products
+YataiDON
+YataiDON.exe
+YataiDON.data
+YataiDON.html
+YataiDON.js
+YataiDON.wasm

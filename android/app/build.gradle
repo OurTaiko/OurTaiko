@@ -9,12 +9,12 @@ if (keystoreFile.exists()) {
 }
 
 android {
-    namespace 'com.yataidon.app'
+    namespace 'org.ourtaiko.fanmade'
     compileSdk 35
     ndkVersion '27.3.13750724'
 
     defaultConfig {
-        applicationId 'com.yataidon.app'
+        applicationId 'org.ourtaiko.fanmade'
         minSdk 29
         targetSdk 35
         versionCode 1
@@ -52,16 +52,30 @@ android {
         into shaderOutDir
     }
 
+    task copyLicenseAssets(type: Copy) {
+        from rootProject.file('..')
+        include 'LICENSE', 'NOTICE'
+        into layout.buildDirectory.dir('generated/license_assets')
+    }
+
     sourceSets {
         main {
             assets.srcDirs = [
                 'src/main/assets',
-                layout.buildDirectory.dir('generated/shader_assets').get()
+                layout.buildDirectory.dir('generated/shader_assets').get(),
+                layout.buildDirectory.dir('generated/license_assets').get()
             ]
         }
     }
 
     preBuild.dependsOn copyShaderAssets
+    preBuild.dependsOn copyLicenseAssets
+
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = variant.name == 'release' ? 'OurTaiko-Android.apk' : "OurTaiko-Android-${variant.name}.apk"
+        }
+    }
 
     lint {
         abortOnError false

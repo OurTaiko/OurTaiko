@@ -1,4 +1,4 @@
-# YataiDON Windows Updater
+# OurTaiko Windows Updater
 #
 # Expected GitHub release assets:
 #   checksums-windows.sha256    sha256sum-format, relative paths from install dir
@@ -17,11 +17,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Repo        = "yonokid/YataiDON"
+$Repo        = "OurTaiko/YataiDON"
 $ApiUrl      = "https://api.github.com/repos/$Repo/releases/latest"
 $InstallDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VersionFile = Join-Path $InstallDir ".version"
-$TmpDir      = Join-Path $env:TEMP "YataiDON-update-$([System.IO.Path]::GetRandomFileName())"
+$TmpDir      = Join-Path $env:TEMP "OurTaiko-update-$([System.IO.Path]::GetRandomFileName())"
 New-Item -ItemType Directory -Path $TmpDir | Out-Null
 
 function Log { param($msg) Write-Host "[update] $msg" }
@@ -183,7 +183,7 @@ try {
     }
 
     Set-Content $VersionFile $LatestReleaseId
-    Log "Update complete ($($Release.tag_name)). Restart YataiDON to apply."
+    Log "Update complete ($($Release.tag_name)). Restart OurTaiko to apply."
 
 } finally {
     Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue

@@ -1,4 +1,4 @@
-name: Build YataiDON (Release)
+name: Build OurTaiko (Release)
 
 on:
   workflow_dispatch:
@@ -98,55 +98,56 @@ jobs:
 
       - name: Prepare release package
         run: |
-          mkdir -p release/YataiDON-Linux
-          cp build/bin/YataiDON release/YataiDON-Linux/
-          cp -r Skins release/YataiDON-Linux/
-          cp -r shader release/YataiDON-Linux/
-          cp -r Songs release/YataiDON-Linux/
-          cp config.toml release/YataiDON-Linux/
-          cp update.sh release/YataiDON-Linux/
-          chmod +x release/YataiDON-Linux/YataiDON release/YataiDON-Linux/update.sh
+          mkdir -p release/OurTaiko-Linux
+          cp build/bin/OurTaiko release/OurTaiko-Linux/
+          cp -r Skins release/OurTaiko-Linux/
+          cp -r shader release/OurTaiko-Linux/
+          cp -r Songs release/OurTaiko-Linux/
+          cp config.toml release/OurTaiko-Linux/
+          cp LICENSE NOTICE release/OurTaiko-Linux/
+          cp update.sh release/OurTaiko-Linux/
+          chmod +x release/OurTaiko-Linux/OurTaiko release/OurTaiko-Linux/update.sh
 
           # Bundle FFmpeg shared libraries into lib/
-          mkdir -p release/YataiDON-Linux/lib
-          ldd build/bin/YataiDON | grep -E "(libav|libsw).*=>" | awk '{print $3}' | \
-            xargs -I{} cp -L {} release/YataiDON-Linux/lib/
+          mkdir -p release/OurTaiko-Linux/lib
+          ldd build/bin/OurTaiko | grep -E "(libav|libsw).*=>" | awk '{print $3}' | \
+            xargs -I{} cp -L {} release/OurTaiko-Linux/lib/
 
           # Bundle sndfile codec dependencies (ogg, vorbis, FLAC, opus, mp3, etc.)
-          ldd build/bin/YataiDON | grep -E "(libsndfile|libogg|libvorbis|libFLAC|libopus|libmp3lame|libmpg123|libspeex).*=>" | awk '{print $3}' | \
-            grep -v "^$" | xargs -I{} cp -L {} release/YataiDON-Linux/lib/ 2>/dev/null || true
+          ldd build/bin/OurTaiko | grep -E "(libsndfile|libogg|libvorbis|libFLAC|libopus|libmp3lame|libmpg123|libspeex).*=>" | awk '{print $3}' | \
+            grep -v "^$" | xargs -I{} cp -L {} release/OurTaiko-Linux/lib/ 2>/dev/null || true
 
           # Bundle SDL3 shared library
-          ldd build/bin/YataiDON | grep -E "libSDL3.*=>" | awk '{print $3}' | \
-            grep -v "^$" | xargs -I{} cp -L {} release/YataiDON-Linux/lib/ 2>/dev/null || true
+          ldd build/bin/OurTaiko | grep -E "libSDL3.*=>" | awk '{print $3}' | \
+            grep -v "^$" | xargs -I{} cp -L {} release/OurTaiko-Linux/lib/ 2>/dev/null || true
 
           # Bundle transitive deps of FFmpeg AND sndfile codec libs
-          for so in release/YataiDON-Linux/lib/lib{av,sw,ogg,vorbis,FLAC,opus,mp3lame,mpg123,speex,SDL3}*.so*; do
+          for so in release/OurTaiko-Linux/lib/lib{av,sw,ogg,vorbis,FLAC,opus,mp3lame,mpg123,speex,SDL3}*.so*; do
             ldd "$so" 2>/dev/null | grep "=>" | awk '{print $3}' | grep -v "^$" | \
               grep -vE "lib(c\.so|m\.so|dl\.so|rt\.so|pthread\.so|gcc_s\.so|stdc\+\+\.so|X11\.so|GL\.so|asound\.so|pulse\.so|jack\.so|Xi\.so|Xrandr\.so|xcb)" | \
               grep -v "ld-linux" | \
-              xargs -I{} cp -L {} release/YataiDON-Linux/lib/ 2>/dev/null || true
+              xargs -I{} cp -L {} release/OurTaiko-Linux/lib/ 2>/dev/null || true
           done
 
           # Patch rpath: binary looks in $ORIGIN/lib, bundled .so files look in $ORIGIN
-          patchelf --set-rpath '$ORIGIN/lib' release/YataiDON-Linux/YataiDON
-          for so in release/YataiDON-Linux/lib/*.so*; do
+          patchelf --set-rpath '$ORIGIN/lib' release/OurTaiko-Linux/OurTaiko
+          for so in release/OurTaiko-Linux/lib/*.so*; do
             [ -f "$so" ] && patchelf --set-rpath '$ORIGIN' "$so" 2>/dev/null || true
           done
 
           # Checksums — binary + updater + shader + lib
           (
-            cd release/YataiDON-Linux
-            sha256sum YataiDON update.sh
+            cd release/OurTaiko-Linux
+            sha256sum OurTaiko update.sh LICENSE NOTICE
             find shader -type f | sort | xargs sha256sum
             [ -d lib ] && find lib -type f | sort | xargs sha256sum || true
-          ) > release/YataiDON-Linux/checksums-linux.sha256
+          ) > release/OurTaiko-Linux/checksums-linux.sha256
 
       - name: Upload Linux package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-Linux
-          path: release/YataiDON-Linux/
+          name: OurTaiko-Linux
+          path: release/OurTaiko-Linux/
           if-no-files-found: error
 
   build-windows:
@@ -223,28 +224,29 @@ jobs:
       - name: Prepare release package
         shell: bash
         run: |
-          mkdir -p release/YataiDON-Windows
-          cp build/bin/YataiDON.exe release/YataiDON-Windows/
-          cp build/bin/*.dll release/YataiDON-Windows/ 2>/dev/null || true
-          cp -r Skins release/YataiDON-Windows/
-          cp -r shader release/YataiDON-Windows/
-          cp -r Songs release/YataiDON-Windows/
-          cp config.toml release/YataiDON-Windows/
-          cp update.ps1 update.bat release/YataiDON-Windows/
+          mkdir -p release/OurTaiko-Windows
+          cp build/bin/OurTaiko.exe release/OurTaiko-Windows/
+          cp build/bin/*.dll release/OurTaiko-Windows/ 2>/dev/null || true
+          cp -r Skins release/OurTaiko-Windows/
+          cp -r shader release/OurTaiko-Windows/
+          cp -r Songs release/OurTaiko-Windows/
+          cp config.toml release/OurTaiko-Windows/
+          cp LICENSE NOTICE release/OurTaiko-Windows/
+          cp update.ps1 update.bat release/OurTaiko-Windows/
 
           # Checksums — binary + updater + dlls + shader
           (
-            cd release/YataiDON-Windows
-            sha256sum YataiDON.exe update.ps1 update.bat
+            cd release/OurTaiko-Windows
+            sha256sum OurTaiko.exe update.ps1 update.bat LICENSE NOTICE
             find shader -type f | sort | xargs sha256sum
             find . -maxdepth 1 -name "*.dll" | sort | xargs sha256sum
-          ) > release/YataiDON-Windows/checksums-windows.sha256
+          ) > release/OurTaiko-Windows/checksums-windows.sha256
 
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-Windows
-          path: release/YataiDON-Windows/
+          name: OurTaiko-Windows
+          path: release/OurTaiko-Windows/
           if-no-files-found: error
 
   build-macos:
@@ -318,35 +320,36 @@ jobs:
 
       - name: Prepare release package
         run: |
-          mkdir -p release/YataiDON-macOS
-          cp build/bin/YataiDON release/YataiDON-macOS/
-          cp -r Skins release/YataiDON-macOS/
-          cp -r shader release/YataiDON-macOS/
-          cp -r Songs release/YataiDON-macOS/
-          cp config.toml release/YataiDON-macOS/
-          cp update.sh release/YataiDON-macOS/
-          chmod +x release/YataiDON-macOS/YataiDON release/YataiDON-macOS/update.sh
+          mkdir -p release/OurTaiko-macOS
+          cp build/bin/OurTaiko release/OurTaiko-macOS/
+          cp -r Skins release/OurTaiko-macOS/
+          cp -r shader release/OurTaiko-macOS/
+          cp -r Songs release/OurTaiko-macOS/
+          cp config.toml release/OurTaiko-macOS/
+          cp LICENSE NOTICE release/OurTaiko-macOS/
+          cp update.sh release/OurTaiko-macOS/
+          chmod +x release/OurTaiko-macOS/OurTaiko release/OurTaiko-macOS/update.sh
 
           # Bundle non-system dylib dependencies
-          mkdir -p release/YataiDON-macOS/lib
+          mkdir -p release/OurTaiko-macOS/lib
           dylibbundler -od -b \
-            -x release/YataiDON-macOS/YataiDON \
-            -d release/YataiDON-macOS/lib \
+            -x release/OurTaiko-macOS/OurTaiko \
+            -d release/OurTaiko-macOS/lib \
             -p @executable_path/lib
 
           # Checksums — binary + updater + shader + lib
           (
-            cd release/YataiDON-macOS
-            shasum -a 256 YataiDON update.sh
+            cd release/OurTaiko-macOS
+            shasum -a 256 OurTaiko update.sh LICENSE NOTICE
             find shader -type f | sort | xargs shasum -a 256
             [ -d lib ] && find lib -type f | sort | xargs shasum -a 256 || true
-          ) > release/YataiDON-macOS/checksums-macos.sha256
+          ) > release/OurTaiko-macOS/checksums-macos.sha256
 
       - name: Upload macOS package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-macOS
-          path: release/YataiDON-macOS/
+          name: OurTaiko-macOS
+          path: release/OurTaiko-macOS/
           if-no-files-found: error
 
   build-android:
@@ -445,8 +448,8 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-Android
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: OurTaiko-Android
+          path: android/app/build/outputs/apk/release/OurTaiko-Android.apk
           if-no-files-found: error
 
   build-ios:
@@ -455,7 +458,7 @@ jobs:
     env:
       CONFIGURATION: Release
       IOS_DEPLOYMENT_TARGET: "16.3"
-      IOS_BUNDLE_IDENTIFIER: com.yataidon.app
+      IOS_BUNDLE_IDENTIFIER: org.ourtaiko.fanmade
       # build_ios.sh disables signing when no development team is supplied.
       IOS_DEVELOPMENT_TEAM: ""
 
@@ -521,28 +524,28 @@ jobs:
 
       - name: Package unsigned IPA
         run: |
-          APP_PATH="$GITHUB_WORKSPACE/build-ios-device/bin/Release/YataiDON.app"
+          APP_PATH="$GITHUB_WORKSPACE/build-ios-device/bin/Release/OurTaiko.app"
           test -f "$APP_PATH/Info.plist"
-          test -x "$APP_PATH/YataiDON"
+          test -x "$APP_PATH/OurTaiko"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP_PATH/Info.plist")" = "iPhoneOS"
-          xcrun lipo -verify_arch arm64 "$APP_PATH/YataiDON"
+          xcrun lipo -verify_arch arm64 "$APP_PATH/OurTaiko"
 
           IPA_STAGE="$(mktemp -d "$RUNNER_TEMP/yataidon-ipa.XXXXXX")"
           trap 'rm -rf "$IPA_STAGE"' EXIT
           mkdir -p "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release"
-          ditto --norsrc "$APP_PATH" "$IPA_STAGE/Payload/YataiDON.app"
-          ditto -c -k --norsrc --keepParent "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release/YataiDON-iOS-unsigned.ipa"
+          ditto --norsrc "$APP_PATH" "$IPA_STAGE/Payload/OurTaiko.app"
+          ditto -c -k --norsrc --keepParent "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release/OurTaiko-iOS-unsigned.ipa"
           (
             cd "$GITHUB_WORKSPACE/release"
-            shasum -a 256 YataiDON-iOS-unsigned.ipa > checksums-ios.sha256
+            shasum -a 256 OurTaiko-iOS-unsigned.ipa > checksums-ios.sha256
           )
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-iOS
+          name: OurTaiko-iOS
           path: |
-            release/YataiDON-iOS-unsigned.ipa
+            release/OurTaiko-iOS-unsigned.ipa
             release/checksums-ios.sha256
           compression-level: 0
           if-no-files-found: error
@@ -581,41 +584,41 @@ jobs:
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-Linux
+          name: OurTaiko-Linux
           path: linux/
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-Windows
+          name: OurTaiko-Windows
           path: windows/
 
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-macOS
+          name: OurTaiko-macOS
           path: macos/
 
       - name: Download Android artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-Android
+          name: OurTaiko-Android
           path: android-out/
 
       - name: Download iOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-iOS
+          name: OurTaiko-iOS
           path: ios-out/
 
       - name: Package release assets
         run: |
           # Full zips for manual download
-          (cd linux   && zip -r ../YataiDON-Linux.zip .)
-          (cd windows && zip -r ../YataiDON-Windows.zip .)
-          (cd macos   && zip -r ../YataiDON-macOS.zip .)
-          cp android-out/app-release.apk YataiDON-Android.apk
-          cp ios-out/YataiDON-iOS-unsigned.ipa YataiDON-iOS-unsigned.ipa
+          (cd linux   && zip -r ../OurTaiko-Linux.zip .)
+          (cd windows && zip -r ../OurTaiko-Windows.zip .)
+          (cd macos   && zip -r ../OurTaiko-macOS.zip .)
+          cp android-out/OurTaiko-Android.apk OurTaiko-Android.apk
+          cp ios-out/OurTaiko-iOS-unsigned.ipa OurTaiko-iOS-unsigned.ipa
 
           # Metadata files
           cp linux/checksums-linux.sha256     ./checksums-linux.sha256
@@ -624,19 +627,19 @@ jobs:
           cp ios-out/checksums-ios.sha256     ./checksums-ios.sha256
 
           # Linux update package: binary + updater + shader + lib
-          UPDATE_LINUX="YataiDON update.sh shader/"
+          UPDATE_LINUX="OurTaiko update.sh LICENSE NOTICE shader/"
           [ -d linux/lib ] && UPDATE_LINUX="$UPDATE_LINUX lib/"
           tar -czf update-linux.tar.gz -C linux $UPDATE_LINUX
 
           # Windows update package: binary + updater + dlls + shader
-          UPDATE_WIN="YataiDON.exe update.ps1 update.bat shader/"
+          UPDATE_WIN="OurTaiko.exe update.ps1 update.bat LICENSE NOTICE shader/"
           for dll in windows/*.dll; do
             [ -f "$dll" ] && UPDATE_WIN="$UPDATE_WIN $(basename "$dll")"
           done
           tar -czf update-windows.tar.gz -C windows $UPDATE_WIN
 
           # macOS update package: binary + updater + shader + lib
-          UPDATE_MACOS="YataiDON update.sh shader/"
+          UPDATE_MACOS="OurTaiko update.sh LICENSE NOTICE shader/"
           [ -d macos/lib ] && UPDATE_MACOS="$UPDATE_MACOS lib/"
           tar -czf update-macos.tar.gz -C macos $UPDATE_MACOS
 
@@ -644,11 +647,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            YataiDON-Linux.zip
-            YataiDON-Windows.zip
-            YataiDON-macOS.zip
-            YataiDON-Android.apk
-            YataiDON-iOS-unsigned.ipa
+            OurTaiko-Linux.zip
+            OurTaiko-Windows.zip
+            OurTaiko-macOS.zip
+            OurTaiko-Android.apk
+            OurTaiko-iOS-unsigned.ipa
             update-linux.tar.gz
             update-windows.tar.gz
             update-macos.tar.gz
@@ -656,7 +659,7 @@ jobs:
             checksums-windows.sha256
             checksums-macos.sha256
             checksums-ios.sha256
-          name: "YataiDON [Latest Release]"
+          name: "OurTaiko [Latest Release]"
           tag_name: "latest"
           make_latest: true
           token: ${{ secrets.GITHUB_TOKEN }}

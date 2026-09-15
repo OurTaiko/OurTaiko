@@ -132,7 +132,7 @@ void setup_logging(const std::string& log_level_str) {
         dup_filter->add_sink(file_sink);
 
 #ifdef __ANDROID__
-        auto android_sink = std::make_shared<spdlog::sinks::android_sink_mt>("YataiDON");
+        auto android_sink = std::make_shared<spdlog::sinks::android_sink_mt>("OurTaiko");
         std::vector<spdlog::sink_ptr> sinks {android_sink, dup_filter};
 #else
         std::vector<spdlog::sink_ptr> sinks {console_sink, dup_filter};

@@ -181,7 +181,7 @@
       "configurePreset": "ios-simulator",
       "configuration": "Release",
       "targets": [
-        "YataiDON"
+        "OurTaiko"
       ]
     },
     {
@@ -189,7 +189,7 @@
       "configurePreset": "ios-device",
       "configuration": "Release",
       "targets": [
-        "YataiDON"
+        "OurTaiko"
       ]
     }
   ]

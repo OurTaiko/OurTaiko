@@ -29,10 +29,10 @@ song library. Large skin videos increase both app size and first-launch copy tim
 
 ```sh
 ./build_ios.sh simulator
-open build-ios-simulator/YataiDON.xcodeproj
+open build-ios-simulator/OurTaiko.xcodeproj
 ```
 
-Select the YataiDON scheme and an installed iPhone or iPad Simulator, then Run.
+Select the OurTaiko scheme and an installed iPhone or iPad Simulator, then Run.
 The script uses your Mac's architecture; set `IOS_ARCH=x86_64` on Intel if needed.
 No Apple development team is required for the unsigned Simulator build.
 
@@ -40,12 +40,12 @@ No Apple development team is required for the unsigned Simulator build.
 
 ```sh
 IOS_DEVELOPMENT_TEAM=YOUR_TEAM_ID \
-IOS_BUNDLE_IDENTIFIER=com.yourname.yataidon \
+IOS_BUNDLE_IDENTIFIER=org.ourtaiko.fanmade \
 ./build_ios.sh device
-open build-ios-device/YataiDON.xcodeproj
+open build-ios-device/OurTaiko.xcodeproj
 ```
 
-Select your connected device and the YataiDON scheme. Check Signing & Capabilities
+Select your connected device and the OurTaiko scheme. Check Signing & Capabilities
 and select your Apple team, then Run. Enable Developer Mode on the device when
 Xcode requests it. Without a team, the script builds an unsigned `.app` for compile
 checks; it cannot be installed on a physical device until it is signed.
@@ -61,13 +61,13 @@ appropriate signing, artwork, and rights to the assets you include.
 ## Build an unsigned IPA with GitHub Actions
 
 The existing [Release workflow](../.github/workflows/build.yml) includes a
-`build-ios` job. In GitHub, open **Actions → Build YataiDON (Release) → Run workflow**
+`build-ios` job. In GitHub, open **Actions → Build OurTaiko (Release) → Run workflow**
 and select the branch containing the iOS changes. This runs all platform builds.
 
 The iOS job uses a `macos-15` runner and `./build_ios.sh device` to build an ARM64
-Release app for iOS 16.3 or later, with Bundle ID `com.yataidon.app` and code signing
-disabled. It packages the app as `Payload/YataiDON.app` inside
-`YataiDON-iOS-unsigned.ipa`, alongside `checksums-ios.sha256`. No Apple certificate,
+Release app for iOS 16.3 or later, with Bundle ID `org.ourtaiko.fanmade` and code signing
+disabled. It packages the app as `Payload/OurTaiko.app` inside
+`OurTaiko-iOS-unsigned.ipa`, alongside `checksums-ios.sha256`. No Apple certificate,
 provisioning profile, or App Store Connect credentials are required. There is no
 TestFlight or App Store upload step. Sign the downloaded IPA with your own signing
 tool and credentials before installing it on an iPhone or iPad.
@@ -77,7 +77,7 @@ fetch the private skin submodules. Fanmade networking is enabled by default and
 uses the installed app's TOML configuration; no API credentials are embedded in
 the build.
 
-Download the `YataiDON-iOS` artifact from the workflow run after the iOS job
+Download the `OurTaiko-iOS` artifact from the workflow run after the iOS job
 succeeds. Once all platform builds succeed, the existing `latest` GitHub Release
 also receives the unsigned IPA and its SHA-256 checksum file. An iOS failure is
 included in the build summary and prevents that combined Release from publishing.
@@ -94,7 +94,7 @@ because the IPA is already a compressed ZIP archive.
 ## Songs, skins, and saves
 
 On first launch, bundled resources are copied into the app's Documents directory.
-Open **Files → On My iPhone/iPad → YataiDON**, or use Finder's device File Sharing.
+Open **Files → On My iPhone/iPad → OurTaiko**, or use Finder's device File Sharing.
 Add song folders under `Songs`, and skins under `Skins`. TJA files and their audio
 files must stay together. Restart the app to rescan new content. The shared folder
 also contains `config.toml`, score databases, caches, and `latest.log`.
@@ -155,7 +155,7 @@ Apple's Secure Transport and system trust store with certificate verification
 required; no Android CA bundle or host macOS OpenSSL installation is needed.
 
 Networking is enabled by default (`FANMADE_NETWORK=ON`). Configure up to five
-independent endpoints in **Settings → Apps → YataiDON**, then fully restart the
+independent endpoints in **Settings → Apps → OurTaiko**, then fully restart the
 game. Each server page contains an enable switch, name, base URL, username,
 secure password field, and optional HTTP proxy. New installations start with all
 servers disabled; server 1 has the OurTaiko Fanmade public URL prefilled.

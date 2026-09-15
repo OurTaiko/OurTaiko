@@ -2,6 +2,7 @@
 # incremental builds. The app's writable Documents directory is unrelated.
 file(REMOVE_RECURSE "${DEST_DIR}/Skins" "${DEST_DIR}/Songs" "${DEST_DIR}/shader")
 file(MAKE_DIRECTORY "${DEST_DIR}")
+file(COPY "${SOURCE_DIR}/LICENSE" "${SOURCE_DIR}/NOTICE" DESTINATION "${DEST_DIR}")
 file(COPY "${SOURCE_DIR}/shader" DESTINATION "${DEST_DIR}")
 file(COPY "${SKINS_DIR}/" DESTINATION "${DEST_DIR}/Skins"
   PATTERN ".git" EXCLUDE PATTERN ".git*" EXCLUDE)

@@ -421,7 +421,8 @@ static void run_frame() {
 }
 
 int main(int argc, char* argv[]) {
-    spdlog::info("Starting YataiDON");
+    spdlog::info("Starting OurTaiko");
+    spdlog::info("Author: OurTaiko. Based on YataiDON by Yono (Yonokid) and contributors; GNU GPLv3. See LICENSE and NOTICE.");
     set_working_directory_to_executable();
     global_data.config = new Config(get_config());
     init_scores_manager(global_data.config->general.score_method == ScoreMethod::GEN3);
@@ -446,7 +447,7 @@ int main(int argc, char* argv[]) {
     ray::SetTraceLogLevel(ray::LOG_ERROR);
     setup_logging(global_data.config->general.log_level);
 
-    ray::InitWindow(1280, 720, "YataiDON");
+    ray::InitWindow(1280, 720, "OurTaiko");
     load_skin();
 
     scores_manager.player_1 = global_data.config->general.player_1_id;

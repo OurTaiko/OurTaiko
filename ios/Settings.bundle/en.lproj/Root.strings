@@ -1,5 +1,5 @@
 "ONLINE_SERVERS" = "Online servers";
-"RESTART_NOTICE" = "Restart YataiDON after changing online settings. Each enabled server has its own account and song folder.";
+"RESTART_NOTICE" = "Restart OurTaiko after changing online settings. Each enabled server has its own account and song folder.";
 "SERVER_NOTICE" = "Enter the server address and account, then enable this server. The address must start with http:// or https://.";
 "ENABLED" = "Enabled";
 "SERVER_NAME" = "Server name";
