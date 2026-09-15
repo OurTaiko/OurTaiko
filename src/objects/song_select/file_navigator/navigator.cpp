@@ -6,6 +6,7 @@
 #include "color_utils.h"
 #include "../song_select_script.h"
 #include "../../../libs/filesystem.h"
+#include "../../../libs/fanmade.h"
 #ifdef SUPPORT_FUMEN
 #include "../../../libs/optional/gen4.h"
 #include "../../../libs/optional/gen3.h"
@@ -586,6 +587,13 @@ void Navigator::load_current_directory_async(const fs::path path) {
     BoxDef box_def = parse_box_def(path);
 
     setup_back_box(path, true);
+    try { fanmade::client().load_directory(path); }
+    catch (const std::exception& e) {
+        spdlog::warn("Category load failed: {}", e.what());
+        loading_complete = true;
+        current_path = path;
+        return;
+    }
 
 #ifdef SUPPORT_FUMEN
     fs::path own_root = gen4::find_data_root(path);
@@ -1068,6 +1076,9 @@ void Navigator::scan_song_tree(const fs::path& path, std::vector<fs::path>& song
 
 void Navigator::start_inline_prefetch(const fs::path& path) {
     join_prefetch();
+    prefetch.reset();
+    // Remote folders are empty until opened; prefetching would cache an empty scan.
+    if (fanmade::client().is_category(path)) return;
     prefetch = std::make_unique<InlinePrefetch>();
     prefetch->path = path;
     InlinePrefetch* pf = prefetch.get();
@@ -1082,6 +1093,12 @@ void Navigator::join_prefetch() {
 }
 
 void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
+    try { fanmade::client().load_directory(path); }
+    catch (const std::exception& e) {
+        spdlog::warn("Category load failed: {}", e.what());
+        loading_complete = true;
+        return;
+    }
     if (load_gen4_genre_songs(path, box_def)) {
         loading_complete = true;
         return;

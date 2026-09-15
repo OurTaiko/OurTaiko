@@ -88,7 +88,16 @@ class Handler(BaseHTTPRequestHandler):
             scores=[score(endpoint),score(endpoint,id='old',versionId='d'*32,score=9999999)]
             if variant=='missing-combo': del scores[0]['max_combo']
             if variant=='null-combo': scores[0]['max_combo']=None
-            return self.reply({'charts':[chart(endpoint)],'scores':scores})
+            return self.reply({'categories':[
+                {'id':'game','title':'Game','genre':'GAME'},
+                {'id':'pop','title':'Pop','genre':'J-POP'},
+                {'id':'variety','title':'Variety','genre':'VARIETY'}], 'scores':scores})
+        if path.startswith('/api/v1/game/categories/'):
+            category=path.split('/')[-2]
+            if category=='variety':
+                if counts[endpoint+':'+path]==1: return self.reply({},503)
+                return self.reply({'categoryId':category,'charts':[]})
+            return self.reply({'categoryId':category,'charts':[chart(endpoint)]})
         if path=='/api/v1/charts/'+SONG: return self.reply(chart(endpoint))
         if path.endswith('/tja'): return self.transfer(TJA)
         if path.endswith('/audio'): return self.transfer(AUDIO, known_length=endpoint!='second')

@@ -40,8 +40,8 @@ http_proxy = ""
 
 ## 生命周期
 
-1. 启动 Loading 阶段，逐个服务器登录，并从 `/api/v1/game/bootstrap` 取得完整公开曲库和该账号所有历史成绩。某个服务器失败不会阻止其他服务器和本地歌曲进入选曲，失败服务器文件夹显示错误。
-2. 每个服务器在选曲中有独立文件夹（示例名 OurTaiko Fanmade）。目录文件只含 API 的多语言标题、难度和等级，不提前下载原始 TJA 和音频。
+1. 启动 Loading 阶段，逐个服务器登录，并从 `/api/v1/game/bootstrap` 取得分类列表和该账号所有历史成绩，不再请求全部谱面。某个服务器失败不会阻止其他服务器和本地歌曲进入选曲，失败服务器文件夹显示错误。
+2. 每个服务器在选曲中有独立文件夹（示例名 OurTaiko Fanmade），内含 Game / Virtual Singer / Pop / Classic / Variety 分类 `box.def`。打开分类时，导航器工作线程请求 `/api/v1/game/categories/{id}/charts`，生成该分类谱面的展示文件；失败保留返回入口，重新进入可重试。成功加载的分类在本次进程中复用，重启刷新分类与归属。目录文件只含 API 的多语言标题、难度和等级，不提前下载原始 TJA 和音频。同一谱面在多个分类的路径不同，文件缓存及成绩仍使用同一个作品 ID。
 3. 当前版本的各难度最高分及对应良、可、不可、连打数和最大连击写入选曲成绩数据，供皮肤显示。所有历史成绩保存在客户端内存中；旧版本成绩不混入当前版本。API 未提供 gauge、冠和段位，界面不会伪造这些字段。单人使用 P1 或 P2 均对应配置账号；双人时仅首先登录的一方提交到这个账号。
 4. 确定难度后，在加载页重新获取歌曲详情和 SHA-256，下载缺失或哈希不符的文件。只有哈希验证成功后才进入游戏，下载中可按返回异步取消。作者的新版本会在此阶段取得；原先所选难度已删除时停止加载并显示错误。
    加载页分别显示谱面和歌曲音频的进度条、百分比、已下载量及总大小。服务器未提供总大小时显示已下载量和活动进度条；校验、缓存命中和下载完成各有独立状态。百分比来自实际网络传输字节数，文件只有通过 SHA-256 校验并保存后才标记完成。界面支持中文及英文，跟随游戏语言；下载失败和取消时保留当前两项进度。
@@ -90,3 +90,11 @@ cmake --build /tmp/fanmade-cpr --parallel 4
 clang++ -std=c++20 -DFANMADE_NETWORK -I.cmake-deps/cpr-src/include -I/tmp/fanmade-cpr/cpr_generated_includes -I.cmake-deps/rapidjson-src/include -I.cmake-deps/spdlog-src/include tests/fanmade/client.cpp src/libs/fanmade.cpp src/libs/parsers/tja.cpp src/libs/md5.cpp /tmp/fanmade-cpr/lib/libcpr.a -lcurl -liconv -o /tmp/fanmade-client-test
 python3 tests/fanmade/fixture.py /tmp/fanmade-client-test
 ```
+
+## 分类曲库升级验证（2026-09-14）
+
+游戏与后端需同步升级：bootstrap 的 `charts` 已由 `categories` 替代，不兼容只支持全量谱面列表的旧服务器／旧游戏。新协议从服务器和分类生成嵌套 `box.def`；分类 ID 经过安全路径字符校验。单个分类仍按需求一次返回所有谱面，历史成绩仍完整同步，单次 API 64 MiB 限制保持原状。未打开的分类不会进入本地全库搜索索引。
+
+- 原生 C++ HTTP 夹具通过：启动无 `.tja`、进入分类才生成谱面、重复进入复用、空分类、失败重试、多分类共享成绩及下载缓存；已有代理、哈希、取消和成绩重试通过。
+- 真实 Go API + 临时 PostgreSQL + 合成 TJA／测试 MP3 通过分类读取、下载、缓存修复和成绩提交，未使用业务数据库。
+- iOS Simulator Release 完整构建通过；本次未安装或进行游戏界面／真机／Android／Windows 运行回归。

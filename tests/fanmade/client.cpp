@@ -33,6 +33,17 @@ void parser_tests() {
     bool rejected=false; try { playable_tja("COURSE:Oni\n#START\n1,\n#END\n",c); } catch(...) { rejected=true; }
     check(rejected,"reject missing block");
 }
+void load_categories(Client& client,bool all=false) {
+    for(const auto& server:fs::directory_iterator(client.song_paths({}).front())) {
+        for(const auto& entry:fs::directory_iterator(server.path())) {
+            auto folder=entry.path();
+            if(!fs::is_directory(folder)||(!all&&folder.filename()!="game")) continue;
+            check(client.is_category(folder),"registered nested category");
+            check(client.load_directory(folder),"load category on demand");
+            check(client.load_directory(folder),"reopen loaded category from cache");
+        }
+    }
+}
 int main(int argc,char** argv) {
  try {
     parser_tests();
@@ -53,6 +64,17 @@ int main(int argc,char** argv) {
     Client client; client.bootstrap(configs,cache);
     check(client.online(),client.status().c_str());
     auto roots=client.song_paths({}); check(roots.size()==1,"catalog root");
+    for(auto& f:fs::recursive_directory_iterator(roots[0])) check(f.path().extension()!=".tja","bootstrap must not materialize any charts");
+    check(!client.load_directory(roots[0]),"root listing does not fetch charts");
+    load_categories(client,real);
+    if(!real) {
+        auto empty=fs::directory_iterator(roots[0])->path()/"variety";
+        bool failed=false;
+        try { client.load_directory(empty); } catch(...) { failed=true; }
+        check(failed && client.status().find("reopen to retry")!=std::string::npos,"category failure is retryable");
+        check(client.load_directory(empty),"empty category succeeds on retry");
+        for(auto& f:fs::directory_iterator(empty)) check(f.path().extension()!=".tja","empty category has no songs");
+    }
     std::vector<fs::path> paths;
     for(auto& f:fs::recursive_directory_iterator(roots[0])) if(f.path().extension()==".tja") paths.push_back(f.path());
     check(paths.size()>=(real?1u:2u),"all server catalogs");
@@ -104,6 +126,14 @@ int main(int argc,char** argv) {
         if(!real) check(partial,"both files publish intermediate byte progress");
     }
     check(fs::exists(playable),"TJA ready");
+    if(!real) {
+        auto pop=path.parent_path().parent_path()/"pop";
+        client.load_directory(pop);
+        auto same=pop/path.filename();
+        check(client.chart(same)->id==client.chart(path)->id,"one chart belongs to multiple categories");
+        check(client.best(same,3)->score==client.best(path,3)->score,"cross-category score identity");
+        check(client.prepare(same)==playable,"cross-category download cache identity");
+    }
     TJAParser parsed(playable);
     const auto audio_path=parsed.metadata.wave;
     check(fs::exists(audio_path),"parsed TJA resolves downloaded audio");
@@ -131,6 +161,7 @@ int main(int argc,char** argv) {
     if(!real) {
         Client interrupted;
         interrupted.bootstrap({configs.front()},cache/"cancel-progress");
+        load_categories(interrupted);
         fs::path selected;
         for(auto& f:fs::recursive_directory_iterator(interrupted.song_paths({}).front()))
             if(f.path().extension()==".tja") selected=f.path();
@@ -162,6 +193,7 @@ int main(int argc,char** argv) {
         // Fixture commits the first request but returns 500. A new client must
         // replay the durable queue with the original key and recover one score.
         Client resumed; resumed.bootstrap(configs,cache);
+        load_categories(resumed);
         for(int n=0;n<100;n++) {
             resumed.update(); auto best=resumed.best(path,diff);
             if(best&&best->score==score.score) break;

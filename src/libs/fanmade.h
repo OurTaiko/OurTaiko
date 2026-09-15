@@ -53,6 +53,10 @@ public:
     ~Client();
     void bootstrap(const std::vector<ServerConfig>& servers, const fs::path& cache);
     std::vector<fs::path> song_paths(std::vector<fs::path> local) const;
+    bool is_category(const fs::path& path) const;
+    // Called by the navigator worker after opening a category. No HTTP during
+    // root enumeration. Throws on failure so reopening can retry.
+    bool load_directory(const fs::path& path);
     std::optional<Chart> chart(const fs::path& path) const;
     std::optional<Score> best(const fs::path& path, int difficulty) const;
     // Callback runs on the worker thread; publish a snapshot before rendering.

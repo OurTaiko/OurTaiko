@@ -233,6 +233,9 @@ std::string playable_tja(const std::string& utf8,const Chart& chart) {
 struct Client::Impl {
     mutable std::mutex mutex;
     std::mutex prepare_mutex;
+    std::mutex catalog_mutex;
+    struct CategoryFolder { std::string server, id; bool loaded = false; };
+    std::map<std::string,CategoryFolder> categories;
     std::mutex pump_mutex;
     std::atomic<bool> bootstrapping{false};
     std::atomic<uint64_t> revision{0};
@@ -283,7 +286,7 @@ void Client::bootstrap(const std::vector<ServerConfig>& servers,const fs::path& 
     // Catalog is disposable display metadata. Content-addressed objects and
     // pending/rejected score submissions live outside it and survive refresh.
     fs::remove_all(impl->root); fs::create_directories(impl->root);
-    { std::lock_guard lock(impl->mutex); impl->charts.clear(); impl->endpoints.clear(); }
+    { std::lock_guard lock(impl->mutex); impl->charts.clear(); impl->categories.clear(); impl->endpoints.clear(); }
     for(auto config:servers) {
         auto e=std::make_shared<Endpoint>(); e->config=std::move(config);
         while(!e->config.base_url.empty()&&e->config.base_url.back()=='/') e->config.base_url.pop_back();
@@ -298,22 +301,27 @@ void Client::bootstrap(const std::vector<ServerConfig>& servers,const fs::path& 
             impl->status(e->config.name+": loading catalog and scores");
             std::lock_guard transport(e->http_mutex);
             login(*e); auto snapshot=json(authorized(*e,"/api/v1/game/bootstrap"));
-            if(!snapshot.HasMember("charts")||!snapshot["charts"].IsArray()||!snapshot.HasMember("scores")||!snapshot["scores"].IsArray()) throw std::runtime_error("API_BOOTSTRAP_INVALID");
-            std::vector<Chart> charts;
-            for(auto& v:snapshot["charts"].GetArray()) charts.push_back(chart_from(v,e->id));
+            if(!snapshot.HasMember("categories")||!snapshot["categories"].IsArray()||!snapshot.HasMember("scores")||!snapshot["scores"].IsArray()) throw std::runtime_error("API_BOOTSTRAP_INVALID");
+            struct Category { std::string id,title,genre; };
+            std::vector<Category> categories;
+            for(auto& v:snapshot["categories"].GetArray()) {
+                Category c{str(v,"id"),str(v,"title"),str(v,"genre")};
+                if(c.id.empty()||c.id.size()>64||c.id[0]<'a'||c.id[0]>'z'||c.id.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789-")!=std::string::npos)
+                    throw std::runtime_error("API_CATEGORY_INVALID");
+                if(std::any_of(categories.begin(),categories.end(),[&](const auto& other){return other.id==c.id;})) throw std::runtime_error("API_CATEGORY_INVALID");
+                categories.push_back(std::move(c));
+            }
             std::vector<Score> scores;
             for(auto& v:snapshot["scores"].GetArray()) scores.push_back(score_from(v));
             write(dir/"box.def","#TITLE:"+line_text(e->config.name)+"\n#GENRE:Namco Original\n");
-            for(auto& c:charts) {
-                auto path=dir/(c.id+".tja");
-                std::string preview="// Fanmade catalog metadata only. Never play this file.\n"+title_headers(c)+"BPM:"+std::to_string(c.bpm)+"\nDEMOSTART:"+std::to_string(c.demo_start)+"\nWAVE:unavailable.ogg\n";
-                bool supported=false;
-                for(auto& d:c.difficulties) if(d) { supported=true; preview+="COURSE:"+d->course+"\nLEVEL:"+std::to_string(d->level)+"\n#START\n0,\n#END\n"; }
-                if(supported) { write(path,preview); std::lock_guard lock(impl->mutex); impl->charts[path_key(path)]=c; }
-                else write(dir/c.id/"box.def","#TITLE:"+line_text(c.title)+" [Tower/Dan unsupported]\n");
+            for(auto& c:categories) {
+                auto path=dir/c.id;
+                write(path/"box.def","#TITLE:"+line_text(c.title)+"\n#GENRE:"+line_text(c.genre)+"\n");
+                std::lock_guard lock(impl->mutex);
+                impl->categories[path_key(path)]={e->id,c.id,false};
             }
             { std::lock_guard lock(impl->mutex); e->scores=std::move(scores); for(auto& score:e->scores) e->index_score(score); e->connected=true; }
-            impl->status(e->config.name+": "+std::to_string(charts.size())+" songs loaded");
+            impl->status(e->config.name+": "+std::to_string(categories.size())+" categories ready");
         } catch(const std::exception& err) {
             impl->status(e->config.name+": "+err.what());
             write(dir/"box.def","#TITLE:"+line_text(e->config.name)+" ["+err.what()+"]\n");
@@ -324,6 +332,61 @@ void Client::bootstrap(const std::vector<ServerConfig>& servers,const fs::path& 
 }
 std::vector<fs::path> Client::song_paths(std::vector<fs::path> local) const {
     if(!impl->endpoints.empty()) local.push_back(impl->root); return local;
+}
+bool Client::is_category(const fs::path& path) const {
+    std::lock_guard lock(impl->mutex);
+    return impl->categories.count(path_key(path))!=0;
+}
+bool Client::load_directory(const fs::path& path) {
+    std::lock_guard loading(impl->catalog_mutex);
+    const auto key=path_key(path);
+    Impl::CategoryFolder folder;
+    std::shared_ptr<Endpoint> e;
+    {
+        std::lock_guard lock(impl->mutex);
+        auto it=impl->categories.find(key);
+        if(it==impl->categories.end()) return false;
+        if(it->second.loaded) return true;
+        folder=it->second;
+        e=impl->endpoints.at(folder.server);
+    }
+    try {
+        impl->status(e->config.name+": loading "+folder.id);
+        rapidjson::Document result;
+        {
+            std::lock_guard transport(e->http_mutex);
+            result=json(authorized(*e,"/api/v1/game/categories/"+folder.id+"/charts"));
+        }
+        if(str(result,"categoryId")!=folder.id||!result.HasMember("charts")||!result["charts"].IsArray()) throw std::runtime_error("API_CATEGORY_INVALID");
+        std::map<std::string,Chart> charts;
+        for(auto& value:result["charts"].GetArray()) {
+            auto c=chart_from(value,folder.server);
+            auto chart_path=path/(c.id+".tja");
+            std::string preview="// Fanmade catalog metadata only. Never play this file.\n"+title_headers(c)+"BPM:"+std::to_string(c.bpm)+"\nDEMOSTART:"+std::to_string(c.demo_start)+"\nWAVE:unavailable.ogg\n";
+            bool supported=false;
+            for(auto& d:c.difficulties) if(d) { supported=true; preview+="COURSE:"+d->course+"\nLEVEL:"+std::to_string(d->level)+"\n#START\n0,\n#END\n"; }
+            if(supported) {
+                if(!charts.emplace(path_key(chart_path),c).second) throw std::runtime_error("API_DUPLICATE_CHART");
+                write(chart_path,preview);
+            }
+        }
+        {
+            std::lock_guard lock(impl->mutex);
+            impl->charts.insert(charts.begin(),charts.end());
+            impl->categories.at(key).loaded=true;
+            impl->revision++;
+        }
+        impl->status(e->config.name+": "+folder.id+" — "+std::to_string(charts.size())+" songs loaded");
+        return true;
+    } catch(const std::exception& err) {
+        // Never leave partial song lists visible after a failed response.
+        std::error_code ec;
+        for(fs::directory_iterator it(path,ec),end; !ec&&it!=end; it.increment(ec)) {
+            if(it->path().filename()!="box.def") { std::error_code ignored; fs::remove(it->path(),ignored); }
+        }
+        impl->status(e->config.name+": "+folder.id+" failed ("+err.what()+"); reopen to retry");
+        throw;
+    }
 }
 std::optional<Chart> Client::chart(const fs::path& path) const {
     std::lock_guard lock(impl->mutex); auto it=impl->charts.find(path_key(path));
