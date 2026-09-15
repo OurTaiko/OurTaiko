@@ -1,6 +1,7 @@
 #include "player.h"
 #include "raylib.h"
 #include "song_select_script.h"
+#include "difficulty_selection.h"
 #include "../../libs/audio.h"
 #include "../../libs/input.h"
 #include "../../libs/scores.h"
@@ -85,27 +86,14 @@ bool SongSelectPlayer::is_voice_playing() {
 }
 
 void SongSelectPlayer::init_diff_cursor() {
-    int last = global_data.last_difficulty[(int)player_num];
-    if (last < (int)Difficulty::EASY) return;
-
-    Difficulty desired = (Difficulty)std::min(last, (int)Difficulty::ONI);
-
-    Difficulty pick = Difficulty::BACK;
-    for (Difficulty d : curr_diffs) {
-        if (d < Difficulty::EASY || d > Difficulty::ONI) continue;
-        if (d <= desired && (pick == Difficulty::BACK || d > pick)) pick = d;
-    }
-    if (pick == Difficulty::BACK) {
-        // nothing at or below the remembered difficulty - take the lowest
-        for (Difficulty d : curr_diffs) {
-            if (d < Difficulty::EASY || d > Difficulty::ONI) continue;
-            if (pick == Difficulty::BACK || d < pick) pick = d;
-        }
-    }
-    if (pick != Difficulty::BACK) {
-        selected_difficulty = pick;
-        prev_diff = pick;
-    }
+    auto* song = dynamic_cast<SongBox*>(navigator.get_current_item());
+    is_ura = song_select_difficulty::ura_mode(curr_diffs, song && song->is_ura);
+    if (song) song->is_ura = is_ura;
+    ura_toggle = 0;
+    selected_difficulty = song_select_difficulty::initial(
+        song_select_difficulty::visible(curr_diffs, is_ura),
+        global_data.last_difficulty[(int)player_num]);
+    prev_diff = selected_difficulty;
 }
 
 void SongSelectPlayer::reset_selection() {
@@ -122,6 +110,7 @@ void SongSelectPlayer::start_background_diffs() {
 
 void SongSelectPlayer::sync_ura(bool ura) {
     if (voice_played || is_ready) return;
+    ura = song_select_difficulty::ura_mode(curr_diffs, ura);
     if (is_ura == ura) return;
     is_ura = ura;
     ura_toggle = 0;
@@ -379,43 +368,37 @@ SongSelectState SongSelectPlayer::handle_input_selecting() {
 
 void SongSelectPlayer::navigate_difficulty_left() {
     diff_select_move_right = false;
+    const auto diffs = song_select_difficulty::visible(curr_diffs, is_ura);
 
-    if (is_ura && selected_difficulty == Difficulty::URA) {
-        diff_selector_move_1->start();
-        prev_diff = selected_difficulty;
-        selected_difficulty = (curr_diffs.size() == 1)
-            ? (neiro_in_options() ? Difficulty::MODIFIER : Difficulty::NEIRO)
-            : curr_diffs[curr_diffs.size() - 3];
-    } else if (selected_difficulty == Difficulty::NEIRO || selected_difficulty == Difficulty::MODIFIER) {
+    if (selected_difficulty == Difficulty::NEIRO || selected_difficulty == Difficulty::MODIFIER) {
         diff_selector_move_2->start();
         prev_diff = selected_difficulty;
         selected_difficulty = Difficulty((int)selected_difficulty - 1);
     } else if (selected_difficulty == Difficulty::BACK) {
         // no-op
-    } else if (std::find(curr_diffs.begin(), curr_diffs.end(), selected_difficulty) == curr_diffs.end()) {
+    } else if (diffs.empty()) {
+        prev_diff = selected_difficulty;
+        selected_difficulty = neiro_in_options() ? Difficulty::MODIFIER : Difficulty::NEIRO;
+        diff_selector_move_2->start();
+    } else if (std::find(diffs.begin(), diffs.end(), selected_difficulty) == diffs.end()) {
         prev_diff = selected_difficulty;
         diff_selector_move_1->start();
-        selected_difficulty = curr_diffs.front();
-    } else if (selected_difficulty == curr_diffs.front()) {
+        selected_difficulty = diffs.front();
+    } else if (selected_difficulty == diffs.front()) {
         diff_selector_move_2->start();
         prev_diff = selected_difficulty;
         selected_difficulty = neiro_in_options() ? Difficulty::MODIFIER : Difficulty::NEIRO;
     } else {
         diff_selector_move_1->start();
         prev_diff = selected_difficulty;
-        auto it = std::find(curr_diffs.begin(), curr_diffs.end(), selected_difficulty);
+        auto it = std::find(diffs.begin(), diffs.end(), selected_difficulty);
         selected_difficulty = *std::prev(it);
     }
 }
 
 void SongSelectPlayer::navigate_difficulty_right() {
     diff_select_move_right = true;
-
-    if (is_ura && selected_difficulty == Difficulty::HARD) {
-        prev_diff = selected_difficulty;
-        selected_difficulty = Difficulty::URA;
-        diff_selector_move_1->start();
-    }
+    const auto diffs = song_select_difficulty::visible(curr_diffs, is_ura);
 
     bool has_ura = std::find(curr_diffs.begin(), curr_diffs.end(), Difficulty::URA) != curr_diffs.end();
     bool has_oni = std::find(curr_diffs.begin(), curr_diffs.end(), Difficulty::ONI) != curr_diffs.end();
@@ -426,17 +409,19 @@ void SongSelectPlayer::navigate_difficulty_right() {
     } else if (selected_difficulty == Difficulty::NEIRO
                || (selected_difficulty == Difficulty::MODIFIER && neiro_in_options())) {
         prev_diff = selected_difficulty;
-        selected_difficulty = curr_diffs.front();
+        if (diffs.empty()) return;
+        selected_difficulty = diffs.front();
         diff_selector_move_2->start();
         diff_selector_move_1->start();
     } else if (selected_difficulty == Difficulty::MODIFIER || selected_difficulty == Difficulty::BACK) {
         prev_diff = selected_difficulty;
         selected_difficulty = Difficulty((int)selected_difficulty + 1);
         diff_selector_move_2->start();
-    } else if (selected_difficulty < curr_diffs.back()) {
+    } else if (!diffs.empty()) {
+        auto it = std::find(diffs.begin(), diffs.end(), selected_difficulty);
+        if (it != diffs.end() && std::next(it) == diffs.end()) return;
         prev_diff = selected_difficulty;
-        auto it = std::find(curr_diffs.begin(), curr_diffs.end(), selected_difficulty);
-        selected_difficulty = *std::next(it);
+        selected_difficulty = it == diffs.end() ? diffs.front() : *std::next(it);
         diff_selector_move_1->start();
     }
 }

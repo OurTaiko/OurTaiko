@@ -38,6 +38,7 @@ SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
     text_subtitle = subtitles.count(lang) ? subtitles.at(lang) : subtitles.count("en") ? subtitles.at("en") : subtitles.empty() ? "" : subtitles.begin()->second;
 
     this->parser = std::move(parser);
+    is_ura = has_ura() && !this->parser.metadata.course_data.count((int)Difficulty::ONI);
 
     is_favorite = false;
     diff_fade_in = (FadeAnimation*)tex.get_animation(12);
@@ -345,8 +346,10 @@ void SongBox::draw_diff_select() {
     float crown_offset = tex.skin_config[SC::YB_DIFF_OFFSET_CROWN].x;
 
     for (const auto& [diff, course] : parser.metadata.course_data) {
-        if (Difficulty(diff) >= Difficulty::URA) continue;
-        float cx = (diff * offset_x) + crown_offset;
+        if (Difficulty(diff) > Difficulty::URA ||
+            (Difficulty(diff) == Difficulty::URA && !is_ura) ||
+            (Difficulty(diff) == Difficulty::ONI && is_ura)) continue;
+        float cx = (std::min(diff, (int)Difficulty::ONI) * offset_x) + crown_offset;
         draw_diff_outline(cx, offset_y, std::min((float)diff_fade_in->attribute, 0.25f));
         draw_diff_crown(diff, cx, offset_y, diff_fade_in->attribute);
     }
@@ -358,7 +361,8 @@ void SongBox::draw_diff_select() {
         } else {
             tex.draw_texture(DIFF_SELECT::DIFF_TOWER, {.frame=i, .x=i*offset_x, .fade=diff_fade_in->attribute});
         }
-        if (!parser.metadata.course_data.count(i))
+        int shown_diff = (i == (int)Difficulty::ONI && is_ura) ? (int)Difficulty::URA : i;
+        if (!parser.metadata.course_data.count(shown_diff))
             tex.draw_texture(DIFF_SELECT::DIFF_TOWER_SHADOW, {.frame=i, .x=i*offset_x, .fade=std::min((float)diff_fade_in->attribute, 0.25f)});
     }
 
