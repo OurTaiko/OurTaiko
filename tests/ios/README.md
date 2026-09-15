@@ -37,3 +37,21 @@ once, then open Settings → Apps → OurTaiko. Verify all five pages, masked pa
 entry and the imported server. Change an enabled server or account in Settings,
 fully restart the game and check the corresponding song folder. Never include
 real passwords or preference dumps in committed fixtures or logs.
+
+## One-time resource setup
+
+The portable fixture compiles the exact helper called by `ios_prepare_filesystem`:
+
+```sh
+clang++ -std=c++20 tests/ios/game_data.cpp -o /tmp/ourtaiko-game-data-test
+python3 - <<'PYTEST'
+import subprocess, tempfile
+with tempfile.TemporaryDirectory(prefix='ourtaiko-game-data-') as directory:
+    subprocess.run(['/tmp/ourtaiko-game-data-test', directory], check=True)
+PYTEST
+```
+
+Checks initial copy, repeated launch with only the shader version token available
+(no source resource trees), no skin scan during shader updates, preservation of
+player settings, legacy migration, and failure/retry without a completion marker.
+Config recovery and mobile touch defaults have [separate tests](../config/README.md).

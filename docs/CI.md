@@ -49,16 +49,21 @@ git -c http.https://ese.tjadataba.se/.sslVerify=false submodule update --init --
 
 ## Android 内置资源与首次启动
 
-Gradle 的 `copyGameAssets` 任务把三个皮肤、仓库内的 Songs、默认 `config.toml`、
-LICENSE 和 NOTICE 打进 APK，排除皮肤中的 Git 元数据。默认配置启用触摸输入和 VSync，
+Gradle 的 `packGameData` 任务把三个皮肤、仓库内的 Songs、默认 `config.toml`、
+LICENSE 和 NOTICE 合成 `GameData.zip`，同时生成文件总数 `GameData.count`，排除 Git 元数据。
+`copyGameAssets` 保留直接加载的着色器和许可证；APK 不再次压缩 ZIP。默认配置启用触摸输入和 VSync，
 本地构建与 CI 使用相同的打包逻辑，不修改仓库中的配置文件。
 
 启动器先检查存储权限，再在后台准备 `/sdcard/OurTaiko` 中的文件，完成后启动 SDL 游戏。
 Android 10 使用存储写入权限，Android 11 及以上使用“所有文件访问”权限。
-每次启动都会补齐缺失的内置文件；已有配置、皮肤和歌曲保留。
-删除 `config.toml` 后再启动即可恢复默认配置。不会读取或迁移旧目录。
-复制失败时提示重试，单个文件通过临时文件写入，避免将半成品当成完整文件。
-皮肤包含在 APK 中，因此安装包大小与首次资源准备耗时都会增加。
+首次通过单个 ZIP 顺序解压，成功后写入 `.game-data-installed`；后续启动和更新不再遍历内置资源。
+旧版没有完成标记，升级后仅做一次初始化，保留已有配置、皮肤和歌曲。
+配置每次启动独立读取；缺失时重建，解析或类型错误时整份恢复默认，先保存 `.bak` 备份再写新配置。
+已有备份追加 `.bak`，不会覆盖；备份失败时保留原文件，当前进程仍用默认设置。
+Android/iOS 的完整默认配置都启用触控鼓和 VSync，并包含默认按键和 Songs 路径。
+删除配置不会触发资源扫描。手动修复缺失资源可关闭游戏后删除完成标记，已有文件不会覆盖。
+复制失败时提示重试，单个文件通过临时文件写入；文件总数不符时也不会提交完成标记。
+首次仍需写入全部资源，真机首启耗时需要重新实测。
 
 验证方法见 [Android 资源初始化检查](../tests/android/README.md)。
 

@@ -62,12 +62,17 @@ Download the latest release for your operating system from the [releases page](h
 
 #### Android
 1. Install `OurTaiko-Android.apk` (enable "install from unknown sources" if needed)
-2. Allow OurTaiko to access files when prompted. The app prepares bundled skins, songs, and default settings before starting the game; the first launch may take a few minutes.
+2. Allow OurTaiko to access files when prompted. The app prepares bundled skins, songs, and default settings before starting the game; this resource installation runs only once.
 3. Add your own songs to `/sdcard/OurTaiko/Songs/` and skins to `/sdcard/OurTaiko/Skins/`.
 
-Every launch restores missing bundled files, including `/sdcard/OurTaiko/config.toml`.
-Existing settings, skins, and songs are preserved. Delete `config.toml` and restart
-to restore the bundled defaults (touch controls and VSync enabled).
+After successful extraction, later launches skip bundled resource scanning, including
+app upgrades. Existing player files are preserved during the one-time migration.
+Settings are read on every launch: a missing file is recreated; an invalid file is
+backed up as `config.toml.bak` (additional `.bak` suffixes preserve older backups)
+and replaced with complete defaults. Android and iOS defaults enable touch controls
+and VSync. Delete `config.toml` and restart to reset settings. To reinstall missing
+bundled resources, close the app and remove `/sdcard/OurTaiko/.game-data-installed`;
+existing player files are preserved.
 
 #### macOS
 1. Extract `OurTaiko-macOS.zip` and run `./OurTaiko` from its directory.

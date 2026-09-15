@@ -100,11 +100,15 @@ files must stay together. Restart the app to rescan new content. The shared fold
 also contains `config.toml`, score databases, caches, and `latest.log`.
 
 Existing files, including settings and scores, are preserved on app upgrades.
-Missing bundled files are restored at launch; bundled shaders are refreshed to
-match the executable. Uninstalling the app deletes its data container, so copy
+A `.game-data-installed` marker skips resource traversal after successful initial
+installation (including subsequent app upgrades). Remove this marker while the
+app is closed to reinstall missing bundled files. Bundled shaders alone are
+refreshed when their build-time content hash changes after an update. Uninstalling the app deletes its data container, so copy
 out any songs and scores you want to keep first.
 
-Touch input is enabled in the bundled default config. Tap inside the drum for Don
+Settings are read on each launch. Missing settings are recreated; invalid settings
+are backed up with an unused `.bak` suffix and replaced with complete defaults.
+Touch input and VSync are enabled in both bundled and recovered mobile defaults. Tap inside the drum for Don
 and outside for Kat; left and right halves retain the Android mappings. The top
 **Back** control replaces Android's system Back button. **Pause** toggles pause in
 single-player and two-player gameplay. Song search and text settings use the iOS

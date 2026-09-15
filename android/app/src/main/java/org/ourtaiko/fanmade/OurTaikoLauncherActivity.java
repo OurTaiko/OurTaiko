@@ -108,7 +108,6 @@ public class OurTaikoLauncherActivity extends Activity {
         preparation = WORKER.submit(() -> {
             try {
                 GameDataInstaller.install(new GameDataInstaller.Assets() {
-                    public String[] list(String path) throws IOException { return assets.list(path); }
                     public InputStream open(String path) throws IOException {
                         return assets.open(path, AssetManager.ACCESS_STREAMING);
                     }

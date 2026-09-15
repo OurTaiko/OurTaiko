@@ -1,6 +1,6 @@
 # Android bundled game data checks
 
-Run the real installer on a temporary directory with small in-memory assets:
+Run the real installer on a temporary directory with a small in-memory ZIP archive:
 
 ```sh
 javac --release 11 -d /tmp/ourtaiko-android-tests \
@@ -9,10 +9,11 @@ javac --release 11 -d /tmp/ourtaiko-android-tests \
 java -cp /tmp/ourtaiko-android-tests org.ourtaiko.fanmade.GameDataInstallerTest
 ```
 
-Covers first install, config/skin recovery after deletion, preservation of edited
-settings/skins and custom songs, skipping reads of existing large assets,
-interrupted copy cleanup and retry, and cancellation. Only its own generated
-temporary directory is removed.
+Covers first install, zero APK reads on repeat launch (even after resources or
+config are deleted or the bundle changes), one-time legacy migration, user file
+preservation, Unicode paths, interrupted copy cleanup/retry, incomplete archive
+rejection, unsafe ZIP paths, and cancellation. Only its temporary data is removed.
+Configuration recovery is tested separately in [the settings fixture](../config/README.md).
 
 With Android SDK/NDK and the skin submodules available, check Gradle packaging:
 
@@ -21,11 +22,13 @@ cd android
 ./gradlew :app:copyGameAssets :app:mergeDebugAssets :app:compileDebugJavaWithJavac
 ```
 
-Inspect `app/build/generated/game_assets/GameData`: all three skin directories,
+Inspect `app/build/generated/game_assets/GameData.zip`: all three skin directories,
 Songs, config.toml, LICENSE and NOTICE should be present, with no `.git` metadata.
-The packaged config must enable touch input and VSync; the repository config must
-stay unchanged. Removing an input asset and rerunning `copyGameAssets` should
-remove it from the generated tree (Gradle Sync), without touching device data.
+`GameData.count` must equal the number of non-directory ZIP entries. The APK must
+store the ZIP without a second compression layer. The packaged config enables
+touch input and VSync; repository config stays unchanged. The obsolete generated
+`GameData/` directory must be absent. Removing an input asset and rerunning
+`copyGameAssets` should remove it from the ZIP without touching device data.
 
 Device checks (Android 10 and Android 11+):
 
@@ -34,8 +37,12 @@ Device checks (Android 10 and Android 11+):
 2. Grant access and return: resource preparation runs off the UI thread, then
    starts the game. Inspect `/sdcard/OurTaiko/config.toml` and `Skins/`.
 3. Edit config/skin files, add a song and restart: custom content is preserved.
-4. Fully close the game, delete config.toml and a bundled skin file, then launch:
-   both are restored from the APK.
+4. Fully close the game, delete config.toml, then launch: native settings defaults
+   are saved, the touch drum appears, and no resource extraction occurs. Repeat
+   with malformed TOML or an invalid key: inspect the exact `.bak` and new settings.
+   Delete a bundled skin file: later launches must not start resource preparation.
+   Close the app and remove `.game-data-installed` to explicitly reinstall missing
+   resources. Existing player files must remain intact.
 5. Interrupt preparation or run out of storage: retry after resolving the issue;
    partially copied files must not be treated as complete.
 6. Background the launcher while preparing files: it starts the game only after

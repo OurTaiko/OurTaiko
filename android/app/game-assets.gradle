@@ -2,29 +2,37 @@
 def gameAssetsDir = layout.buildDirectory.dir('generated/game_assets')
 def repositoryDir = rootProject.file('..')
 
-tasks.register('copyGameAssets', Sync) {
-    into gameAssetsDir
+tasks.register('packGameData', Zip) {
+    destinationDirectory = gameAssetsDir
+    archiveFileName = 'GameData.zip'
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
     from(new File(repositoryDir, 'Skins')) {
-        into 'GameData/Skins'
+        into 'Skins'
         exclude '**/.git', '**/.git/**', '**/.git*', '**/.DS_Store'
     }
     from(new File(repositoryDir, 'Songs')) {
-        into 'GameData/Songs'
+        into 'Songs'
         exclude '**/.git', '**/.git/**', '**/.git*', '**/.DS_Store'
     }
-    from(new File(repositoryDir, 'shader/es')) { into 'shader/es' }
     from(repositoryDir) {
         include 'LICENSE', 'NOTICE'
-        into 'GameData'
     }
-    // Keep license files at the APK asset root as well.
-    from(repositoryDir) { include 'LICENSE', 'NOTICE' }
     from(new File(repositoryDir, 'config.toml')) {
-        into 'GameData'
         filteringCharset = 'UTF-8'
         filter { line ->
             line.replaceAll(/^touch_input\s*=\s*false\s*$/, 'touch_input = true')
                 .replaceAll(/^vsync\s*=\s*false\s*$/, 'vsync = true')
+        }
+    }
+    outputs.file(gameAssetsDir.map { it.file('GameData.count') })
+    doLast {
+        def zip = new java.util.zip.ZipFile(archiveFile.get().asFile)
+        try {
+            def count = zip.entries().toList().count { !it.directory }
+            new File(gameAssetsDir.get().asFile, 'GameData.count').text = count.toString()
+        } finally {
+            zip.close()
         }
     }
     doFirst {
@@ -34,4 +42,14 @@ tasks.register('copyGameAssets', Sync) {
             }
         }
     }
+}
+
+// Keep directly loaded shader/license assets outside the archive. Clean only
+// the obsolete generated tree from the previous packaging layout.
+tasks.register('copyGameAssets', Sync) {
+    dependsOn 'packGameData'
+    into gameAssetsDir
+    from(new File(repositoryDir, 'shader/es')) { into 'shader/es' }
+    from(repositoryDir) { include 'LICENSE', 'NOTICE' }
+    preserve { include 'GameData.zip', 'GameData.count' }
 }

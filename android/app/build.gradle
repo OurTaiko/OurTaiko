@@ -56,6 +56,9 @@ android {
         }
     }
 
+    // GameData.zip is already compressed; stream it directly from the APK.
+    androidResources { noCompress += ['zip'] }
+
     preBuild.dependsOn 'copyGameAssets'
 
     applicationVariants.all { variant ->
