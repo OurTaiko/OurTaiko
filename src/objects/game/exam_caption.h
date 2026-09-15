@@ -1,11 +1,23 @@
 #pragma once
 
 #include "../../libs/text.h"
+#include "../../libs/dan_exam.h"
 
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
+
+// The drumroll condition icon is `exam_roll` in newer skins and `exam_drumroll` in older
+// ones; use whichever the active skin carries.
+inline TexID exam_icon_id(TexID preferred, const char* folder) {
+    if (tex.textures.find((uint32_t)preferred) != tex.textures.end()) return preferred;
+    const auto roll = tex_id_map.find(std::string(folder) + "/exam_roll");
+    if (roll == tex_id_map.end() || roll->second != preferred) return preferred;
+    const std::string alt = std::string(folder) + "/exam_drumroll";
+    if (tex.has_texture(alt)) return tex.get_enum(alt);
+    return preferred;
+}
 
 inline std::string exam_threshold_text(const TextureWrapper& tex,
                                        const std::string& type,

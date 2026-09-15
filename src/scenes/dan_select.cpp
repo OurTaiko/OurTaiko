@@ -1,4 +1,5 @@
 #include "dan_select.h"
+#include "../libs/dan_exam_json.h"
 #include <tuple>
 #include <climits>
 #ifdef SUPPORT_FUMEN
@@ -37,36 +38,7 @@ int DanNavigator::total_notes_for(const std::vector<DanSongEntry>& songs) {
 }
 
 Exam DanNavigator::parse_exam(const rapidjson::Value& e) {
-    Exam exam;
-    exam.type  = e["type"].GetString();
-    exam.range = e["range"].GetString();
-    if (e.HasMember("value") && e["value"].IsArray() && e["value"].Size() >= 1 && e["value"][0].IsArray()) {
-        // per-song borders: [[red, gold], [red, gold], [red, gold]] (gold optional)
-        for (auto& pair : e["value"].GetArray()) {
-            if (!pair.IsArray() || pair.Size() < 1 || !pair[0].IsInt()) continue;
-            const int red  = pair[0].GetInt();
-            const int gold = pair.Size() >= 2 && pair[1].IsInt() ? pair[1].GetInt() : Exam::GOLD_FULL;
-            exam.song_red.push_back(red);
-            exam.song_gold.push_back(gold);
-        }
-        if (!exam.song_red.empty()) { exam.red = exam.song_red[0]; exam.gold = exam.song_gold[0]; }
-    } else if (e.HasMember("value") && e["value"].IsArray() && e["value"].Size() >= 1 && e["value"][0].IsInt()) {
-        exam.red  = e["value"][0].GetInt();
-        exam.gold = e["value"].Size() >= 2 && e["value"][1].IsInt() ? e["value"][1].GetInt() : Exam::GOLD_FULL;
-    }
-    // A gold on the wrong side of its red is not a border (bad data would light the rainbow
-    // the moment the value passes it): treat that song as red-only.
-    auto sane = [&](int red, int gold) {
-        if (gold == Exam::GOLD_FULL) return gold;
-        const bool bad = exam.range == "less" ? gold > red : gold < red;
-        return bad ? Exam::GOLD_FULL : gold;
-    };
-    for (size_t i = 0; i < exam.song_gold.size(); i++) exam.song_gold[i] = sane(exam.song_red[i], exam.song_gold[i]);
-    exam.gold = sane(exam.red, exam.gold);
-    // The shape of `value` says how the exam is judged: one [red, gold] pair = the whole
-    // course, one pair per song = each song on its own. (`gothrough` is no longer read.)
-    exam.gothrough = !exam.per_song();
-    return exam;
+    return parse_dan_exam(e);
 }
 
 std::optional<DanSongEntry> DanNavigator::load_song_entry(const rapidjson::Value& chart,
@@ -144,7 +116,20 @@ std::optional<DanBoxData> DanNavigator::load_dan_box_data(const fs::path& json_p
     std::vector<Exam> exams;
     if (doc.HasMember("exams")) {
         for (auto& e : doc["exams"].GetArray())
-            exams.push_back(parse_exam(e));
+            try {
+                exams.push_back(parse_exam(e));
+            } catch (const std::invalid_argument& error) {
+                spdlog::warn("DanNavigator: invalid exam in {}: {}", json_path.string(), error.what());
+                return std::nullopt;
+            }
+    }
+
+    for (const Exam& exam : exams) {
+        if (exam.per_song() && (exam.song_red.size() != songs.size() ||
+                               songs.size() != doc["charts"].Size())) {
+            spdlog::warn("DanNavigator: incomplete per-song course {}", json_path.string());
+            return std::nullopt;
+        }
     }
 
     DanBoxData d;

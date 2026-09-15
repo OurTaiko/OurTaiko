@@ -1,5 +1,4 @@
 #include "dan_result.h"
-TexID exam_icon_id(TexID preferred, const char* folder);
 #include <cmath>
 #include "../libs/input.h"
 #include "../libs/scores.h"
@@ -55,6 +54,7 @@ bool shoudan_glyphs(int di, int& ll, int& lr) {
 
 void DanResultScreen::on_screen_start() {
     Screen::on_screen_start();
+    nosave_text.reset();
     audio.play_sound("bgm", VolumePreset::MUSIC);
     audio.play_sound("announce", VolumePreset::VOICE);
     audio.play_sound("partial_intro", VolumePreset::SOUND);

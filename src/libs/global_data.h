@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "config.h"
+#include "dan_exam.h"
 #include "ray.h"
 #include "parsers/tja.h"
 
@@ -44,64 +45,6 @@ enum class Rank {
     _PURPLE = 6,
     _RAINBOW = 7
 };
-
-struct Exam {
-    std::string type;   // "gauge","combo","judgebad","judgegood","judgeperfect","hit","score"
-    int red = 0;
-    int gold = 0;
-    std::string range;  // "less" or "more"
-    bool gothrough = true;
-    // Per-song borders (dan.json value = [[red, gold], ...], one pair per song): the
-    // cabinet's per-song conditions carry a different threshold for each of the three
-    // songs. Empty for the usual course-wide pair; red/gold above then hold song 1's.
-    std::vector<int> song_red;
-    std::vector<int> song_gold;
-    // An omitted gold border means "perfect": 0 for a less exam, 100 % gauge, every note
-    // for good / hit / combo. Stored as GOLD_FULL and resolved where the note count is known.
-    static constexpr int GOLD_FULL = -1;
-    bool per_song() const { return !song_red.empty(); }
-    // The exam as it applies to song i: red/gold swapped for that song's pair.
-    Exam for_song(int i) const {
-        Exam ex = *this;
-        if (per_song() && i >= 0 && i < (int)song_red.size()) {
-            ex.red  = song_red[i];
-            ex.gold = i < (int)song_gold.size() ? song_gold[i] : song_red[i];
-        }
-        // the view of one song is a plain pair again (captions print a single number)
-        ex.song_red.clear();
-        ex.song_gold.clear();
-        return ex;
-    }
-};
-
-inline std::string dan_bar_state(const Exam& exam, int value,
-                                 bool live = false,
-                                 bool near_end = false,
-                                 bool just_before_end = false) {
-    const bool down = (exam.range == "less");
-    // CheckMax
-    if (exam.gold > 0 && ((down && value < exam.gold) || (!down && value >= exam.gold))) {
-        if (!live || !down) return "max";
-        if (just_before_end) return "max_soon2";
-        if (near_end)        return "max_soon";
-        // fall through to the flat palette -- no `max` during play
-    }
-    int gauge = (exam.red > 0)
-        ? (int)std::floor(100.0 * (double)value / (double)exam.red) : 100;
-    if (gauge > 100) gauge = 100;
-    if (down) { gauge = 100 - gauge; if (gauge < 0) gauge = 0; }
-    if (gauge <= 0) return "empty";
-    if (!down) {
-        if (gauge <= 49) return "up_50";
-        if (gauge <= 99) return "up_80";
-        return "up_100";
-    }
-    const int good = (exam.red > 0 && exam.gold > 0)
-        ? 100 - (int)std::floor(100.0 * (double)exam.gold / (double)exam.red) : 100;
-    if (gauge < 30)    return "down_80";
-    if (gauge <= good) return "up_80";
-    return "down_100";
-}
 
 struct DanSongEntry {
     fs::path song_path;

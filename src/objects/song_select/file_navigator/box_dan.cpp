@@ -1,5 +1,4 @@
 #include "box_dan.h"
-TexID exam_icon_id(TexID preferred, const char* folder);
 #include "../../../libs/song_parser.h"
 #include "../../../libs/scores.h"
 #include <algorithm>

@@ -41,15 +41,6 @@ void DanGameScreen::on_screen_start() {
     allnet_indicator  = AllNetIcon();
 }
 
-// The drumroll condition icon is `exam_roll` in newer skins and `exam_drumroll` in older
-// ones; use whichever the active skin carries.
-TexID exam_icon_id(TexID preferred, const char* folder) {
-    if (tex.textures.find((uint32_t)preferred) != tex.textures.end()) return preferred;
-    const std::string alt = std::string(folder) + "/exam_drumroll";
-    if (tex.has_texture(alt)) return tex.get_enum(alt);
-    return preferred;
-}
-
 void DanGameScreen::init_dan() {
     SessionData& sd = global_data.session_data[(int)global_data.player_num];
 
@@ -222,20 +213,7 @@ int DanGameScreen::get_exam_progress_song(const Exam& exam, int song_idx) {
 }
 
 Exam DanGameScreen::exam_for(const Exam& exam, int song_idx) const {
-    Exam ex = song_idx >= 0 ? exam.for_song(song_idx) : exam;
-    if (ex.gold != Exam::GOLD_FULL) return ex;
-    if (ex.range == "less") {
-        ex.gold = 1;                                   // gold = none at all (value < 1)
-    } else if (ex.type == "gauge") {
-        ex.gold = 100;
-    } else if (ex.type == "judgeperfect" || ex.type == "hit" || ex.type == "combo") {
-        int notes = total_notes;
-        if (song_idx >= 0 && song_idx < (int)song_note_counts.size()) notes = song_note_counts[song_idx];
-        ex.gold = std::max(ex.red, notes);              // every note
-    } else {
-        ex.gold = ex.red;                               // score / renda: no perfect value, no gold tier
-    }
-    return ex;
+    return resolve_dan_exam(exam, song_idx, total_notes, song_note_counts);
 }
 
 DanInfoCache DanGameScreen::calculate_dan_info() {
@@ -343,13 +321,7 @@ void DanGameScreen::check_exam_failures(bool course_finished, bool song_finished
 }
 
 int DanGameScreen::exam_tier(const Exam& exam, int value) {
-    const bool has_gold = exam.gold > 0 && exam.gold != exam.red;
-    if (exam.range == "less") {
-        if (value >= exam.red) return 0;
-        return has_gold && value < exam.gold ? 2 : 1;
-    }
-    if (value < exam.red) return 0;
-    return has_gold && value >= exam.gold ? 2 : 1;
+    return dan_exam_tier(exam, value);
 }
 
 void DanGameScreen::save_result_data(bool all_failed) {
@@ -562,19 +534,19 @@ std::optional<Screens> DanGameScreen::update() {
             // (capped, in case a file has a long silent tail).
             constexpr double MAX_TAIL_MS = 20000.0;
             const bool music_running = song_music.has_value() && audio.is_sound_playing(song_music.value());
-            if (music_running && ms_from_start < players[0]->end_time + MAX_TAIL_MS)
-                return std::nullopt;
-            song_max_combo = players[0]->get_combo();
+            if (!music_running || ms_from_start >= players[0]->end_time + MAX_TAIL_MS) {
+                song_max_combo = players[0]->get_combo();
 
-            prev_good     = players[0]->get_good();
-            prev_ok       = players[0]->get_ok();
-            prev_bad      = players[0]->get_bad();
-            prev_drumroll = players[0]->get_total_drumroll();
-            prev_score    = players[0]->get_score();
+                prev_good     = players[0]->get_good();
+                prev_ok       = players[0]->get_ok();
+                prev_bad      = players[0]->get_bad();
+                prev_drumroll = players[0]->get_total_drumroll();
+                prev_score    = players[0]->get_score();
 
-            song_index++;
-            song_started = false;
-            change_song();
+                song_index++;
+                song_started = false;
+                change_song();
+            }
         }
     }
 

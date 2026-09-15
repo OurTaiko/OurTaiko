@@ -1,5 +1,5 @@
 #include "text.h"
-#include "han_fold_table.h"
+#include "han_fold.h"
 #include <chrono>
 #include <vector>
 #include <cmath>
@@ -62,7 +62,6 @@ void FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vect
     int count = 0;
     ray::GlyphInfo* g = ray::LoadFontData(font_data.data(), (int)font_data.size(), font_size,
                                           cps.data(), (int)cps.size(), ray::FONT_DEFAULT, &count);
-    if (!g) return;
     std::unordered_set<int> got;
     for (int i = 0; i < count; i++) { entry.cache.push_back(g[i]); got.insert(g[i].value); }   // take ownership of the glyph images
     RL_FREE(g);                                                    // array only; images now live in `cache`
@@ -72,11 +71,16 @@ void FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vect
     // draws '?' in their place. Simplified / traditional Chinese text hits this constantly
     // on a Japanese font (戏, 开, 乐 ...), so a missing character borrows the glyph of its
     // shinjitai form (戲→戯, 开→開) and is stored under its own codepoint.
-    std::vector<int> missing, alts;
+    std::unordered_map<int, std::vector<int>> missing;
+    std::vector<int> alts;
     for (int cp : cps) {
         if (got.count(cp)) continue;
         int alt = (int)han_fold_codepoint((uint32_t)cp);
-        if (alt != cp) { missing.push_back(cp); alts.push_back(alt); }
+        if (alt != cp) {
+            auto& originals = missing[alt];
+            if (originals.empty()) alts.push_back(alt);
+            originals.push_back(cp);
+        }
     }
     if (missing.empty()) return;
     int alt_count = 0;
@@ -85,10 +89,9 @@ void FontManager::rasterize_new(SizedFont& entry, int font_size, const std::vect
     if (!ag) return;
     for (int i = 0; i < alt_count; i++) {
         bool used = false;
-        for (size_t k = 0; k < alts.size(); k++) {
-            if (alts[k] != ag[i].value) continue;
+        for (int original : missing[ag[i].value]) {
             ray::GlyphInfo gi = ag[i];
-            gi.value = missing[k];
+            gi.value = original;
             if (used) gi.image = ray::ImageCopy(ag[i].image);   // two originals folding to one form
             entry.cache.push_back(gi);
             used = true;
