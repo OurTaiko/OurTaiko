@@ -19,7 +19,9 @@
 #include <cpr/cpr.h>
 #endif
 #if defined(_WIN32)
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
 #elif defined(__APPLE__) || (defined(__unix__) && !defined(__ANDROID__))
 #include <iconv.h>
@@ -79,7 +81,10 @@ Chart chart_from(const rapidjson::Value& v,const std::string& server) {
     c.titles["en"]=c.title; c.subtitles["en"]=c.subtitle;
     for(auto pair:{std::make_pair("titleTranslations",&c.titles),std::make_pair("subtitleTranslations",&c.subtitles)}) {
         if(!v.HasMember(pair.first)||!v[pair.first].IsObject()) throw std::runtime_error("API_TRANSLATIONS_INVALID");
-        for(auto& m:v[pair.first].GetObject()) if(m.value.IsString()) (*pair.second)[m.name.GetString()]=m.value.GetString();
+        // Windows headers define GetObject as a Win32 API macro.
+        const auto& translations=v[pair.first];
+        for(auto m=translations.MemberBegin();m!=translations.MemberEnd();++m)
+            if(m->value.IsString()) (*pair.second)[m->name.GetString()]=m->value.GetString();
     }
     if(!v.HasMember("bpm")||!v["bpm"].IsNumber()||!v.HasMember("demoStart")||!v["demoStart"].IsNumber()) throw std::runtime_error("API_METADATA_INVALID");
     c.bpm=v["bpm"].GetDouble(); c.demo_start=v["demoStart"].GetDouble();
