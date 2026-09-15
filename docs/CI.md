@@ -4,8 +4,8 @@
 
 ## 启动构建
 
-- 推送到 `master` 自动运行 **Build OurTaiko (Release)**，生成各平台构建产物。
-- 也可以在 **Actions → Build OurTaiko (Release) → Run workflow** 手动启动。
+- 推送到 `master` 不会自动运行 CI。
+- 在 **Actions → Build OurTaiko (Release) → Run workflow** 手动启动，生成各平台构建产物。
 - 默认不创建 GitHub Release。成功的单个平台产物可在该次运行的 **Artifacts** 下载。
 - **Build OurTaiko (Debug)** 仍为手动触发，包含 Linux、Windows 和 macOS。
 

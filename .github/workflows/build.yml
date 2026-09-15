@@ -1,8 +1,6 @@
 name: Build OurTaiko (Release)
 
 on:
-  push:
-    branches: [master]
   workflow_dispatch:
     inputs:
       publish_release:
@@ -448,7 +446,7 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP_PATH/Info.plist")" = "iPhoneOS"
           xcrun lipo "$APP_PATH/OurTaiko" -verify_arch arm64
 
-          IPA_STAGE="$(mktemp -d "$RUNNER_TEMP/yataidon-ipa.XXXXXX")"
+          IPA_STAGE="$(mktemp -d "$RUNNER_TEMP/ourtaiko-ipa.XXXXXX")"
           trap 'rm -rf "$IPA_STAGE"' EXIT
           mkdir -p "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release"
           ditto --norsrc "$APP_PATH" "$IPA_STAGE/Payload/OurTaiko.app"

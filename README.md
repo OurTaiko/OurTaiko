@@ -62,7 +62,8 @@ Download the latest release for your operating system from the [releases page](h
 
 #### Android
 1. Install `OurTaiko-Android.apk` (enable "install from unknown sources" if needed)
-2. Place assets in `sdcard/YataiDON`. Specifically, you will need `Skins`, `Songs`, and `config.toml`.
+2. Place assets in `/sdcard/OurTaiko`. Specifically, you will need `Skins`, `Songs`, and `config.toml`. For example, the default skin belongs in `/sdcard/OurTaiko/Skins/PyTaikoGreen/`.
+3. Allow OurTaiko to access all files when prompted, then restart the app.
 
 #### macOS
 1. Extract `OurTaiko-macOS.zip` and run `./OurTaiko` from its directory.
@@ -74,8 +75,8 @@ The display name and build products use OurTaiko. Both Android and iOS use
 `org.ourtaiko.fanmade` as the application ID. Android launches through
 `org.ourtaiko.fanmade.OurTaikoActivity`. The new application ID installs separately
 from the original app; existing private app data is not transferred automatically.
-Android continues to read shared assets from `/sdcard/YataiDON`. The GitHub
-repository currently remains `OurTaiko/OurTaiko`.
+Android reads shared assets only from `/sdcard/OurTaiko`; no legacy data directory
+is read or migrated. The GitHub repository is `OurTaiko/OurTaiko`.
 
 ## Building from Source
 
