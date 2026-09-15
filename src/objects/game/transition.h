@@ -5,6 +5,8 @@
 #include <atomic>
 #include <filesystem>
 #include "../../libs/script.h"
+#include "../../libs/fanmade.h"
+#include <mutex>
 
 class Transition : public LuaScript {
 private:
@@ -16,6 +18,13 @@ private:
     void draw_dan(float total_offset);
 
     std::shared_ptr<std::atomic_bool> cancel_remote = std::make_shared<std::atomic_bool>(false);
+    struct DownloadState {
+        std::mutex mutex;
+        fanmade::DownloadProgress progress;
+    };
+    std::shared_ptr<DownloadState> download_state = std::make_shared<DownloadState>();
+    std::string download_title;
+    void draw_download();
     std::future<std::filesystem::path> remote_download;
     std::string download_error;
     std::filesystem::path remote_source;

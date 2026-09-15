@@ -144,11 +144,17 @@ struct Endpoint {
         if(it==best_scores.end()||score.score>it->second.score) best_scores[key]=score;
     }
 };
+using TransferCallback = std::function<void(uint64_t, uint64_t)>;
 #if defined(FANMADE_NETWORK)
-std::string request(Endpoint& e,const std::string& path,const std::string& body="",const std::string& key="",size_t limit=64*1024*1024, std::shared_ptr<std::atomic_bool> cancel={}) {
+std::string request(Endpoint& e,const std::string& path,const std::string& body="",const std::string& key="",size_t limit=64*1024*1024, std::shared_ptr<std::atomic_bool> cancel={}, TransferCallback progress={}) {
     if(cancel && *cancel) throw std::runtime_error("DOWNLOAD_CANCELLED");
     cpr::Session s;
     if(cancel) s.SetCancellationParam(cancel);
+    if(progress) s.SetProgressCallback(cpr::ProgressCallback{[&](cpr::cpr_pf_arg_t total, cpr::cpr_pf_arg_t now, cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, intptr_t) {
+        progress(now > 0 ? static_cast<uint64_t>(now) : 0,
+                 total > 0 ? static_cast<uint64_t>(total) : 0);
+        return !cancel || !*cancel;
+    }});
     s.SetUrl(cpr::Url{e.config.base_url+path});
     s.SetTimeout(cpr::Timeout{path.find("/versions/")==std::string::npos?15000:120000});
     s.SetConnectTimeout(cpr::ConnectTimeout{5000});
@@ -171,7 +177,7 @@ std::string request(Endpoint& e,const std::string& path,const std::string& body=
     return bytes;
 }
 #else
-std::string request(Endpoint&,const std::string&,const std::string& ="",const std::string& ="",size_t =64*1024*1024, std::shared_ptr<std::atomic_bool> ={}) { throw std::runtime_error("FANMADE_NETWORK_DISABLED"); }
+std::string request(Endpoint&,const std::string&,const std::string& ="",const std::string& ="",size_t =64*1024*1024, std::shared_ptr<std::atomic_bool> ={}, TransferCallback ={}) { throw std::runtime_error("FANMADE_NETWORK_DISABLED"); }
 #endif
 void login(Endpoint& e) {
     rapidjson::Document d; d.SetObject(); put(d,"username",e.config.username); put(d,"password",e.config.password);
@@ -330,8 +336,11 @@ std::optional<Score> Client::best(const fs::path& path,int difficulty) const {
     auto it=best.find(std::make_tuple(c->id,c->version,courses[difficulty]));
     return it==best.end()?std::nullopt:std::optional<Score>(it->second);
 }
-fs::path Client::prepare(const fs::path& path, std::shared_ptr<std::atomic_bool> cancel) {
+fs::path Client::prepare(const fs::path& path, std::shared_ptr<std::atomic_bool> cancel, DownloadCallback progress) {
     std::lock_guard preparing(impl->prepare_mutex);
+    DownloadProgress snapshot;
+    auto publish = [&] { if(progress) progress(snapshot); };
+    publish();
     auto selected=chart(path); if(!selected) return path; auto c=*selected;
     auto e=impl->endpoints.at(c.server);
     std::lock_guard transport(e->http_mutex);
@@ -340,14 +349,35 @@ fs::path Client::prepare(const fs::path& path, std::shared_ptr<std::atomic_bool>
     c=chart_from(current,c.server); // Revisions and renamed metadata are refreshed at loading time.
     auto dir=impl->cache/"objects"/c.server/c.id/c.version;
     auto base="/api/v1/charts/"+c.id+"/versions/"+c.version+"/";
-    auto ensure=[&](const fs::path& file,const std::string& digest,const std::string& kind,size_t limit) {
-        if(fs::exists(file)&&sha256(read(file))==digest) return;
+    snapshot.stage = DownloadProgress::Stage::Files;
+    auto ensure=[&](const fs::path& file,const std::string& digest,const std::string& kind,size_t limit, FileProgress& transfer) {
+        if(cancel && *cancel) throw std::runtime_error("DOWNLOAD_CANCELLED");
+        if(fs::exists(file)) {
+            transfer.state = FileProgress::State::Verifying;
+            publish();
+            auto cached = read(file);
+            if(sha256(cached)==digest) {
+                transfer = {FileProgress::State::Cached, cached.size(), cached.size()};
+                publish();
+                return;
+            }
+        }
         impl->status(e->config.name+": downloading "+kind);
-        auto bytes=request(*e,base+kind,"","",limit,cancel);
+        transfer = {FileProgress::State::Downloading, 0, 0};
+        publish();
+        auto bytes=request(*e,base+kind,"","",limit,cancel,[&](uint64_t received, uint64_t total) {
+            if(transfer.received==received && transfer.total==total) return;
+            transfer.received=received; transfer.total=total;
+            publish();
+        });
+        transfer = {FileProgress::State::Verifying, bytes.size(), bytes.size()};
+        publish();
         if(sha256(bytes)!=digest) throw std::runtime_error("DOWNLOAD_HASH_MISMATCH");
         write(file,bytes);
+        transfer.state = FileProgress::State::Complete;
+        publish();
     };
-    ensure(dir/"original.tja",c.tja_hash,"tja",4*1024*1024);
+    ensure(dir/"original.tja",c.tja_hash,"tja",4*1024*1024,snapshot.chart);
     const auto audio_path=dir/cached_audio_name(c);
     const auto old_audio_path=dir/"audio.ogg";
     // Older clients stored MP3 bytes under .ogg. Reuse only a verified cache.
@@ -355,11 +385,16 @@ fs::path Client::prepare(const fs::path& path, std::shared_ptr<std::atomic_bool>
        && sha256(read(old_audio_path))==c.audio_hash) {
         fs::rename(old_audio_path,audio_path);
     }
-    ensure(audio_path,c.audio_hash,"audio",256*1024*1024);
+    ensure(audio_path,c.audio_hash,"audio",256*1024*1024,snapshot.audio);
+    snapshot.stage = DownloadProgress::Stage::Preparing;
+    publish();
     auto playable=dir/"play.tja";
     write(playable,playable_tja(to_utf8(read(dir/"original.tja"),c.encoding),c));
     { std::lock_guard lock(impl->mutex); impl->charts[path_key(playable)]=c; impl->charts[path_key(path)]=c; impl->revision++; }
-    impl->status(e->config.name+": ready"); return playable;
+    impl->status(e->config.name+": ready");
+    snapshot.stage = DownloadProgress::Stage::Ready;
+    publish();
+    return playable;
 }
 void Client::submit(const fs::path& path,int difficulty,const Score& score) {
     auto c=chart(path); if(!c||difficulty<0||difficulty>=5||!c->difficulties[difficulty]||!c->difficulties[difficulty]->cloud) return;

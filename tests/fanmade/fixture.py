@@ -11,11 +11,12 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 TJA = b'TITLE:Original\nBPM:120\nWAVE:fixture.ogg\nCOURSE:Oni\nLEVEL:8\n#START\n1234,\n#END\nCOURSE:Hard\nLEVEL:4\nSTYLE:Double\n#START P1\n1111,\n#END\n#START P2\n2222,\n#END\n'
-AUDIO = b'OggS synthetic download fixture (protocol test, not decoded)'
+AUDIO = b'OggS synthetic download fixture (protocol test, not decoded)' * 8192
 SONG, VERSION = '1'*32, 'a'*32
 counts = collections.Counter()
 stored = {}
@@ -46,6 +47,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Length', str(len(data)))
         self.end_headers()
         self.wfile.write(data)
+    def transfer(self, data, known_length=True):
+        self.send_response(200)
+        if known_length:
+            self.send_header('Content-Length', str(len(data)))
+        self.end_headers()
+        chunk = 16384 if len(data) > 1024 else 32
+        try:
+            for start in range(0, len(data), chunk):
+                self.wfile.write(data[start:start + chunk])
+                self.wfile.flush()
+                time.sleep(0.01)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # A cancelled client intentionally closes mid-transfer.
     def do_GET(self): self.handle_request()
     def do_POST(self): self.handle_request()
     def handle_request(self):
@@ -76,8 +90,8 @@ class Handler(BaseHTTPRequestHandler):
             if variant=='null-combo': scores[0]['max_combo']=None
             return self.reply({'charts':[chart(endpoint)],'scores':scores})
         if path=='/api/v1/charts/'+SONG: return self.reply(chart(endpoint))
-        if path.endswith('/tja'): return self.reply(TJA)
-        if path.endswith('/audio'): return self.reply(AUDIO)
+        if path.endswith('/tja'): return self.transfer(TJA)
+        if path.endswith('/audio'): return self.transfer(AUDIO, known_length=endpoint!='second')
         if path=='/api/v1/game/scores':
             body=json.loads(self.rfile.read(int(self.headers['Content-Length'])))
             assert body['difficulty']=='Oni' and body['versionId']==VERSION
@@ -101,8 +115,8 @@ if __name__=='__main__':
             env={**os.environ,'http_proxy':'http://127.0.0.1:1','https_proxy':'http://127.0.0.1:1','ALL_PROXY':'http://127.0.0.1:1','NO_PROXY':'*'}
             subprocess.run([sys.argv[1],base,cache],env=env,check=True)
             assert counts['proxy']>0, 'configured proxy unused'
-            assert sum(v for k,v in counts.items() if k.endswith('/tja'))==2, counts
-            assert sum(v for k,v in counts.items() if k.endswith('/audio'))==3, counts
+            assert sum(v for k,v in counts.items() if k.endswith('/tja'))==3, counts
+            assert sum(v for k,v in counts.items() if k.endswith('/audio'))==4, counts
             assert len(stored)==1, stored
             print('PASS: proxy routing, empty proxy bypass, exact download counts, version isolation, no DOUBLE upload')
     finally: server.shutdown()

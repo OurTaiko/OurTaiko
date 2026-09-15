@@ -68,7 +68,12 @@ int main(int argc,char** argv) {
         for(const auto& candidate:paths) {
             if(client.chart(candidate)->title=="First") path=candidate;
             else {
-                auto ogg=client.prepare(candidate);
+                bool unknown_length_progress=false;
+                auto ogg=client.prepare(candidate,{},[&](const DownloadProgress& p) {
+                    if(p.audio.state==FileProgress::State::Downloading && p.audio.received>0 && p.audio.total==0)
+                        unknown_length_progress=true;
+                });
+                check(unknown_length_progress,"report received bytes without fabricating an unknown total");
                 TJAParser parsed_ogg(ogg);
                 check(parsed_ogg.metadata.wave.filename()=="audio.ogg" && fs::exists(parsed_ogg.metadata.wave),"OGG audio reference remains playable");
             }
@@ -78,7 +83,26 @@ int main(int argc,char** argv) {
     bool cancellation_worked=false;
     try { client.prepare(path,cancelled); } catch(const std::exception&) { cancellation_worked=true; }
     check(cancellation_worked,"cancelled download must not start");
-    auto playable=client.prepare(path);
+    std::vector<DownloadProgress> progress;
+    auto playable=client.prepare(path,{},[&](const DownloadProgress& p) { progress.push_back(p); });
+    check(!progress.empty() && progress.front().stage==DownloadProgress::Stage::Checking
+          && progress.back().stage==DownloadProgress::Stage::Ready,"preparation stage lifecycle");
+    for(bool chart_file : {true,false}) {
+        bool partial=false, verifying=false, complete=false;
+        uint64_t received=0;
+        for(const auto& p:progress) {
+            const auto& file=chart_file?p.chart:p.audio;
+            if(file.state==FileProgress::State::Downloading) {
+                check(file.received>=received,"download byte progress is monotonic");
+                received=file.received;
+                if(file.total && file.received>0 && file.received<file.total) partial=true;
+            }
+            if(file.state==FileProgress::State::Verifying) verifying=true;
+            if(file.state==FileProgress::State::Complete) { check(verifying,"completion follows verification"); complete=true; }
+        }
+        check(complete,"both files complete");
+        if(!real) check(partial,"both files publish intermediate byte progress");
+    }
     check(fs::exists(playable),"TJA ready");
     TJAParser parsed(playable);
     const auto audio_path=parsed.metadata.wave;
@@ -89,7 +113,12 @@ int main(int argc,char** argv) {
         check(!notes.notes.empty(), "actual game parser produced empty notes");
     }
     auto first=fs::last_write_time(audio_path);
-    client.prepare(path);
+    DownloadProgress cached;
+    client.prepare(path,{},[&](const DownloadProgress& p) {
+        check(p.chart.state!=FileProgress::State::Downloading && p.audio.state!=FileProgress::State::Downloading,"cache hit never reports a download");
+        cached=p;
+    });
+    check(cached.chart.state==FileProgress::State::Cached && cached.audio.state==FileProgress::State::Cached,"cache hit reported for both files");
     check(fs::last_write_time(audio_path)==first,"hash hit avoids download");
     if(!real) {
         fs::rename(audio_path,playable.parent_path()/"audio.ogg");
@@ -99,6 +128,24 @@ int main(int argc,char** argv) {
     { std::ofstream file(audio_path,std::ios::trunc); file<<"corrupted"; }
     client.prepare(path);
     check(sha256(read_file(audio_path))==client.chart(path)->audio_hash,"corruption repaired");
+    if(!real) {
+        Client interrupted;
+        interrupted.bootstrap({configs.front()},cache/"cancel-progress");
+        fs::path selected;
+        for(auto& f:fs::recursive_directory_iterator(interrupted.song_paths({}).front()))
+            if(f.path().extension()==".tja") selected=f.path();
+        auto cancel=std::make_shared<std::atomic_bool>(false);
+        bool rejected=false, finished=false;
+        try {
+            interrupted.prepare(selected,cancel,[&](const DownloadProgress& p) {
+                if(p.audio.state==FileProgress::State::Downloading && p.audio.received>0) *cancel=true;
+                if(p.audio.state==FileProgress::State::Complete || p.stage==DownloadProgress::Stage::Ready) finished=true;
+            });
+        } catch(const std::exception&) { rejected=true; }
+        check(*cancel && rejected && !finished,"cancellation still interrupts transfer with progress enabled");
+        for(auto& f:fs::recursive_directory_iterator(cache/"cancel-progress"))
+            check(f.path().filename()!="audio.mp3" && f.path().filename()!="play.tja","cancelled download never becomes playable");
+    }
     auto chart=client.chart(path); int diff=3;
     if(real) {
         diff=-1; for(int i=0;i<5;i++) if(chart->difficulties[i]&&chart->difficulties[i]->cloud) { diff=i; break; }

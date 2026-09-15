@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
@@ -32,6 +33,18 @@ struct Score {
     std::string id, song, version, difficulty;
     int64_t good = 0, ok = 0, bad = 0, score = 0, drumroll = 0, max_combo = 0;
 };
+struct FileProgress {
+    enum class State { Waiting, Downloading, Verifying, Cached, Complete };
+    State state = State::Waiting;
+    uint64_t received = 0;
+    uint64_t total = 0; // Zero means the server has not supplied a length.
+};
+struct DownloadProgress {
+    enum class Stage { Checking, Files, Preparing, Ready };
+    Stage stage = Stage::Checking;
+    FileProgress chart, audio;
+};
+using DownloadCallback = std::function<void(const DownloadProgress&)>;
 // No rendering or game globals: the HTTP/cache client can be integration-tested
 // against a fixture server without starting raylib or accessing local scores.db.
 class Client {
@@ -42,7 +55,8 @@ public:
     std::vector<fs::path> song_paths(std::vector<fs::path> local) const;
     std::optional<Chart> chart(const fs::path& path) const;
     std::optional<Score> best(const fs::path& path, int difficulty) const;
-    fs::path prepare(const fs::path& path, std::shared_ptr<std::atomic_bool> cancel = {}); // worker thread only, throws on failure
+    // Callback runs on the worker thread; publish a snapshot before rendering.
+    fs::path prepare(const fs::path& path, std::shared_ptr<std::atomic_bool> cancel = {}, DownloadCallback progress = {});
     void submit(const fs::path& path, int difficulty, const Score& score);
     void update(); // launches queued submissions; never waits for HTTP
     bool online() const;
