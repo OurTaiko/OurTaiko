@@ -19,6 +19,7 @@ OurTaiko.exe
 /android/local.properties
 /android/keystore.properties
 /android/yataidon-release.jks
+/android/ourtaiko-release.jks
 /android/.gradle/
 /android/app/.cxx/
 /build-android-arm64

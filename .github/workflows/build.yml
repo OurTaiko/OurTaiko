@@ -1,7 +1,17 @@
 name: Build OurTaiko (Release)
 
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a GitHub Release after all builds pass
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   build-linux:
@@ -9,35 +19,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> $GITHUB_OUTPUT
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
-
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install dependencies
         env:
@@ -159,38 +151,17 @@ jobs:
         shell: msys2 {0}
 
     steps:
-      - name: Configure Git credentials
-        shell: bash
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        shell: bash
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> $GITHUB_OUTPUT
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
-
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        shell: bash
-        run: git submodule update --init --recursive
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -254,36 +225,17 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global credential.helper ""
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> $GITHUB_OUTPUT
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
-
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install dependencies
         run: |
@@ -357,35 +309,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> $GITHUB_OUTPUT
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive
+      - name: Configure Android signing
+        id: signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PUBLISH_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release }}
+        run: bash tools/configure_android_signing_ci.sh
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -397,7 +342,7 @@ jobs:
         run: |
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           yes | $SDKMANAGER --licenses >/dev/null 2>&1 || true
-          $SDKMANAGER "ndk;27.3.13750724" "cmake;3.22.1"
+          $SDKMANAGER "ndk;27.3.13750724" "cmake;3.22.1" "platforms;android-35" "build-tools;34.0.0"
 
       - name: Cache FFmpeg for Android arm64
         id: cache-ffmpeg
@@ -429,21 +374,16 @@ jobs:
           echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
           echo "cmake.dir=$ANDROID_SDK_ROOT/cmake/3.22.1" >> android/local.properties
 
-      - name: Decode keystore
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/yataidon-release.jks
-          printf 'storeFile=yataidon-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-            "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
-            "${{ secrets.ANDROID_KEY_ALIAS }}" \
-            "${{ secrets.ANDROID_KEY_PASSWORD }}" \
-            > android/keystore.properties
-
       - name: Patch config for Android
         run: sed -i 's/^touch_input = false/touch_input = true/' config.toml
 
       - name: Build Release APK
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon -POurTaikoCiDebugSigning=${{ steps.signing.outputs.debug_signing }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -463,39 +403,17 @@ jobs:
       IOS_DEVELOPMENT_TEAM: ""
 
     steps:
-      - name: Configure Git credentials
-        env:
-          GITEA_USER: ${{ secrets.GITEA_USER }}
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-        run: |
-          git config --global credential.helper ""
-          git config --global url."https://${GITEA_USER}:${GITEA_TOKEN}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> "$GITHUB_OUTPUT"
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> "$GITHUB_OUTPUT"
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
-
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install build tools
         run: |
@@ -579,7 +497,9 @@ jobs:
   release:
     needs: [build-linux, build-windows, build-macos, build-android, build-ios]
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+    permissions:
+      contents: write
     steps:
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
@@ -660,6 +580,7 @@ jobs:
             checksums-macos.sha256
             checksums-ios.sha256
           name: "OurTaiko [Latest Release]"
-          tag_name: "latest"
+          tag_name: "build-${{ github.run_number }}-${{ github.run_attempt }}"
+          target_commitish: ${{ github.sha }}
           make_latest: true
           token: ${{ secrets.GITHUB_TOKEN }}

@@ -7,6 +7,8 @@ def keystoreFile = rootProject.file('keystore.properties')
 if (keystoreFile.exists()) {
     keystoreFile.withInputStream { keystoreProps.load(it) }
 }
+def ciDebugSigning = providers.gradleProperty('OurTaikoCiDebugSigning').orNull == 'true'
+def ciReleaseSigning = !!System.getenv('ANDROID_KEYSTORE_PASSWORD')
 
 android {
     namespace 'org.ourtaiko.fanmade'
@@ -89,7 +91,12 @@ android {
 
     signingConfigs {
         release {
-            if (keystoreProps['storeFile']) {
+            if (ciReleaseSigning) {
+                storeFile rootProject.file('ourtaiko-release.jks')
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            } else if (keystoreProps['storeFile']) {
                 storeFile rootProject.file(keystoreProps['storeFile'])
                 storePassword keystoreProps['storePassword']
                 keyAlias keystoreProps['keyAlias']
@@ -101,7 +108,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            signingConfig ciDebugSigning ? signingConfigs.debug : signingConfigs.release
         }
         debug {
             jniDebuggable true

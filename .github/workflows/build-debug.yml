@@ -3,20 +3,26 @@ name: Build OurTaiko (Debug)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-linux:
     name: Build on Linux
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
+        with:
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install dependencies
         env:
@@ -137,15 +143,17 @@ jobs:
         shell: msys2 {0}
 
     steps:
-      - name: Configure Git credentials
-        shell: bash
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
+        with:
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -198,15 +206,17 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global credential.helper ""
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
+        with:
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install dependencies
         run: |

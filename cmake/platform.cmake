@@ -138,19 +138,20 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
             -fno-omit-frame-pointer
         )
   elseif(NOT WIN32)
+    set(_debug_sanitizers address undefined)
+    if(NOT APPLE)
+      list(APPEND _debug_sanitizers leak)
+    endif()
+    list(JOIN _debug_sanitizers "," _debug_sanitizers)
     target_compile_options(${PROJECT_NAME} PRIVATE
             -O0
             -g
-            -fmax-errors=0
-            -fsanitize=address
-            -fsanitize=leak
-            -fsanitize=undefined
+            $<$<CXX_COMPILER_ID:GNU>:-fmax-errors=0>
+            -fsanitize=${_debug_sanitizers}
             -fno-omit-frame-pointer
         )
     target_link_options(${PROJECT_NAME} PRIVATE
-            -fsanitize=address
-            -fsanitize=leak
-            -fsanitize=undefined
+            -fsanitize=${_debug_sanitizers}
         )
     message(STATUS "AddressSanitizer enabled for Debug build")
   else()

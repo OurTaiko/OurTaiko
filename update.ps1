@@ -17,7 +17,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Repo        = "OurTaiko/YataiDON"
+$Repo        = "OurTaiko/OurTaiko"
 $ApiUrl      = "https://api.github.com/repos/$Repo/releases/latest"
 $InstallDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $VersionFile = Join-Path $InstallDir ".version"
