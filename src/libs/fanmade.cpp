@@ -78,7 +78,7 @@ Score score_from(const rapidjson::Value& v) {
     return s;
 }
 Chart chart_from(const rapidjson::Value& v,const std::string& server) {
-    Chart c; c.server=server; c.id=str(v,"id"); c.version=str(v,"versionId"); c.title=str(v,"title"); c.subtitle=str(v,"subtitle");
+    Chart c; c.server=server; c.id=str(v,"id"); c.version=str(v,"versionId"); c.title=str(v,"title"); c.subtitle=str(v,"subtitle"); c.maker=str(v,"maker");
     c.tja_hash=str(v,"tjaHash"); c.audio_hash=str(v,"audioHash"); c.encoding=str(v,"encoding"); c.audio_name=str(v,"audioName");
     if(!hex_id(c.id,32)||!hex_id(c.version,32)||!hex_id(c.tja_hash,64)||!hex_id(c.audio_hash,64)) throw std::runtime_error("API_ID_INVALID");
     c.titles["en"]=c.title; c.subtitles["en"]=c.subtitle;
@@ -112,7 +112,7 @@ std::string cached_audio_name(const Chart& c) {
     throw std::runtime_error("API_AUDIO_FORMAT_UNSUPPORTED");
 }
 std::string title_headers(const Chart& c) {
-    std::string out;
+    std::string out = "MAKER:"+line_text(c.maker)+"\n";
     for(auto pair:{std::make_pair("TITLE",&c.titles),std::make_pair("SUBTITLE",&c.subtitles)})
         for(auto& [lang,value]:*pair.second) {
             if(lang!="en"&&lang!="ja"&&lang!="zh"&&lang!="ko") continue;
@@ -246,7 +246,7 @@ std::string playable_tja(const std::string& utf8,const Chart& chart) {
     }
     auto header=[](const std::string& line) {
         auto key=upper(trim(line.substr(0,line.find(':'))));
-        return key.rfind("TITLE",0)!=0&&key.rfind("SUBTITLE",0)!=0&&key!="WAVE"&&key!="BGMOVIE"&&key!="PREIMAGE"&&key!="COURSE"&&key!="LEVEL"&&key!="STYLE";
+        return key.rfind("TITLE",0)!=0&&key.rfind("SUBTITLE",0)!=0&&key!="MAKER"&&key!="WAVE"&&key!="BGMOVIE"&&key!="PREIMAGE"&&key!="COURSE"&&key!="LEVEL"&&key!="STYLE";
     };
     while(std::getline(input,line)) {
         line=trim(line.substr(0,line.find("//"))); if(line.empty()) continue;

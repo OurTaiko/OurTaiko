@@ -16,6 +16,10 @@ public:
     SongParser parser;
     bool is_favorite;
     std::string text_subtitle;
+    std::string text_maker;
+    bool showing_maker = false;
+    std::unique_ptr<OutlinedText> maker_subtitle;
+    const std::string& displayed_subtitle() const { return showing_maker ? text_maker : text_subtitle; }
     std::unique_ptr<OutlinedText> subtitle;
     std::unique_ptr<OutlinedText> name_black;
     std::unique_ptr<OutlinedText> bpm_text;
@@ -57,22 +61,26 @@ public:
 
     const char* lua_kind() const override { return "song"; }
     OutlinedText* horizontal_subtitle() {
-        if (!horizontal_subtitle_cache) {
-            float font_size = utf8_char_count(text_subtitle) < 30
+        auto& cache = showing_maker ? horizontal_maker_cache : horizontal_subtitle_cache;
+        const auto& text = displayed_subtitle();
+        if (!cache) {
+            float font_size = utf8_char_count(text) < 30
                 ? tex.skin_config[SC::YB_SUBTITLE].font_size
                 : tex.skin_config[SC::YB_SUBTITLE].font_size - (int)(10 * tex.screen_scale);
-            horizontal_subtitle_cache = std::make_unique<OutlinedText>(text_subtitle, font_size, text_color, fore_color.value(), false);
+            cache = std::make_unique<OutlinedText>(text, font_size, text_color, fore_color.value(), false);
         }
-        return horizontal_subtitle_cache.get();
+        return cache.get();
     }
     OutlinedText* horizontal_subtitle_large() {
-        if (!horizontal_subtitle_large_cache) {
-            float font_size = utf8_char_count(text_subtitle) < 30
+        auto& cache = showing_maker ? horizontal_maker_large_cache : horizontal_subtitle_large_cache;
+        const auto& text = displayed_subtitle();
+        if (!cache) {
+            float font_size = utf8_char_count(text) < 30
                 ? tex.skin_config[SC::YB_SUBTITLE].font_size
                 : tex.skin_config[SC::YB_SUBTITLE].font_size - (int)(10 * tex.screen_scale);
-            horizontal_subtitle_large_cache = std::make_unique<OutlinedText>(text_subtitle, (int)(font_size * 1.3f), text_color, fore_color.value(), false);
+            cache = std::make_unique<OutlinedText>(text, (int)(font_size * 1.3f), text_color, fore_color.value(), false);
         }
-        return horizontal_subtitle_large_cache.get();
+        return cache.get();
     }
     bool has_ura() const { return parser.metadata.course_data.count((int)Difficulty::URA) > 0; }
     int ex_data_flag() const {
@@ -99,6 +107,8 @@ public:
     }
 
 protected:
+    std::unique_ptr<OutlinedText> horizontal_maker_cache;
+    std::unique_ptr<OutlinedText> horizontal_maker_large_cache;
     std::unique_ptr<OutlinedText> horizontal_subtitle_cache;
     std::unique_ptr<OutlinedText> horizontal_subtitle_large_cache;
 

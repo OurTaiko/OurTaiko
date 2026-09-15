@@ -176,6 +176,9 @@ void TJAParser::get_metadata() {
                 }
                 metadata.title[region_code] = join_after_colon(item);
             }
+            else if (item.rfind("MAKER:", 0) == 0) {
+                metadata.maker = join_after_colon(item);
+            }
             else if (item.find("BPM") == 0) {
                 std::string data_str = split_after_colon(item);
                 if (data_str.empty()) {

@@ -1,16 +1,22 @@
 #include "song_info.h"
 #include "../../libs/global_data.h"
+#include "../../libs/subtitle_rotation.h"
 
 static float skin_outline(const SkinInfo& s) { return s.outline >= 0 ? s.outline : 5.0f; }
 
-SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total)
+SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total, const std::string& maker)
     : song_name(song_name), genre(genre) {
 
     song_title = std::make_unique<OutlinedText>(song_name, tex.skin_config[SC::SONG_INFO].font_size, ray::WHITE, ray::BLACK, false,
                                                 skin_outline(tex.skin_config[SC::SONG_INFO]));
-    if (show_subtitle && !subtitle.empty()) {
+    const int subtitle_font = tex.skin_config[SC::SONG_INFO_SUBTITLE].font_size;
+    if (subtitle_font > 0 && (show_subtitle || !maker.empty()) && !subtitle.empty()) {
         song_subtitle = std::make_unique<OutlinedText>(subtitle, tex.skin_config[SC::SONG_INFO_SUBTITLE].font_size, ray::WHITE, ray::BLACK, false, 5);
     }
+    if (subtitle_font > 0 && !maker.empty()) {
+        maker_credit = std::make_unique<OutlinedText>("MADE BY " + maker, tex.skin_config[SC::SONG_INFO_SUBTITLE].font_size, ray::WHITE, ray::BLACK, false, 5);
+    }
+    showing_maker = !song_subtitle && maker_credit;
     const SkinInfo* plate_cfg = tex.skin_entry("song_num_game");
     this->song_num = std::make_unique<SongNum>(
         song_num, plate_cfg ? plate_cfg->outline : -1.0f);
@@ -21,6 +27,8 @@ SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bo
 
 void SongInfo::update(double current_ms) {
     fade->update(current_ms);
+    if (rotation_started_at < 0) rotation_started_at = current_ms;
+    showing_maker = show_maker_credit(bool(song_subtitle), bool(maker_credit), current_ms - rotation_started_at);
 }
 
 void SongInfo::draw() {
@@ -33,8 +41,12 @@ void SongInfo::draw() {
             title_x = c->x - song_title->width / 2.0f;
     }
 
+    auto* credit = showing_maker ? maker_credit.get() : song_subtitle.get();
     if (const SkinInfo* plate = tex.skin_entry("song_num_game")) {
         song_title->draw({.x=title_x, .y=text_y, .fade=1.0});
+        if (credit && tex.skin_config[SC::SONG_INFO_SUBTITLE].font_size > 0) {
+            credit->draw({.x=text_x - credit->width, .y=tex.skin_config[SC::SONG_INFO_SUBTITLE].y - credit->height / 2.0f, .fade=1.0});
+        }
         if (genre < 9) {
             tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .fade = 1 - fade->attribute,});
         }
@@ -54,13 +66,13 @@ void SongInfo::draw() {
 
     song_title->draw({.x=title_x, .y=text_y, .fade=1 - fade->attribute});
 
-    if (song_subtitle) {
-        float sub_y = tex.skin_config[SC::SONG_INFO_SUBTITLE].y - song_subtitle->height / 2.0f;
-        song_subtitle->draw({.x=text_x - song_subtitle->width, .y=sub_y, .fade=1 - fade->attribute});
+    if (credit) {
+        float sub_y = tex.skin_config[SC::SONG_INFO_SUBTITLE].y - credit->height / 2.0f;
+        credit->draw({.x=text_x - credit->width, .y=sub_y, .fade=1 - fade->attribute});
     }
 
     if (genre < 9) {
-        float genre_y_offset = song_subtitle ? song_subtitle->height : 0;
+        float genre_y_offset = credit ? credit->height : 0;
         tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .y = genre_y_offset, .fade = 1 - fade->attribute,});
     }
 }

@@ -1,4 +1,5 @@
 #include "../../src/libs/fanmade.h"
+#include "../../src/libs/subtitle_rotation.h"
 #include <chrono>
 #include <future>
 #include "../../src/libs/parsers/tja.h"
@@ -12,12 +13,18 @@ void check(bool condition,const char* message) { if(!condition) throw std::runti
 std::string read_file(const fs::path& path) { std::ifstream f(path); return {std::istreambuf_iterator<char>(f),{}}; }
 void parser_tests() {
     check(sha256("abc")=="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad","SHA-256 vector");
-    Chart c; c.audio_name="fixture.ogg"; c.titles["en"]="Renamed"; c.subtitles["zh"]="中文副标题";
+    check(!show_maker_credit(true,true,0) && !show_maker_credit(true,true,2999),"subtitle gets first three seconds");
+    check(show_maker_credit(true,true,3000) && show_maker_credit(true,true,5999),"maker gets next three seconds");
+    check(!show_maker_credit(true,true,6000) && show_maker_credit(true,true,9000),"rotation repeats");
+    check(show_maker_credit(false,true,0) && show_maker_credit(false,true,6000),"maker-only never goes blank");
+    check(!show_maker_credit(true,false,3000) && !show_maker_credit(false,false,3000),"missing maker has no blank slot");
+    Chart c; c.maker="A | B"; c.audio_name="fixture.ogg"; c.titles["en"]="Renamed"; c.subtitles["zh"]="中文副标题";
     c.difficulties[3]=Difficulty{"Oni",8,2,true,""};
-    auto tja=playable_tja("TITLE:Original\nBPM:120\nWAVE:../external.ogg\nBGMOVIE:/secret.mp4\nCOURSE:Oni\nLEVEL:8\nSTYLE:Double\n#START P1\n1111,\n#END\n#START P2\n2222,\n#END\nCOURSE:Oni\nLEVEL:8\nBALLOON:3,4\n#START\n1234,\n#END\n",c);
+    auto tja=playable_tja("TITLE:Original\nMAKER:Old\nBPM:120\nWAVE:../external.ogg\nBGMOVIE:/secret.mp4\nCOURSE:Oni\nLEVEL:8\nSTYLE:Double\n#START P1\n1111,\n#END\n#START P2\n2222,\n#END\nCOURSE:Oni\nLEVEL:8\nBALLOON:3,4\n#START\n1234,\n#END\n",c);
     check(tja.find("1234,")!=std::string::npos && tja.find("1111,")==std::string::npos && tja.find("2222,")==std::string::npos,"select exact single block");
     check(tja.find("BALLOON:3,4")!=std::string::npos && tja.find("BGMOVIE")==std::string::npos && tja.find("../external")==std::string::npos,"gameplay headers and confined assets");
     check(tja.find("TITLE:Renamed")!=std::string::npos && tja.find("SUBTITLEZH:中文副标题")!=std::string::npos,"metadata overrides");
+    check(tja.find("MAKER:A | B\n")!=std::string::npos && tja.find("MAKER:Old")==std::string::npos,"aggregate maker overrides original");
     check(tja.find("WAVE:audio.ogg\n")!=std::string::npos,"OGG cache reference");
     c.audio_name="../Mistletoe.MP3";
     auto mp3=playable_tja("COURSE:Oni\n#START\n1,\n#END\nCOURSE:Oni\n#START\n2,\n#END\nCOURSE:Oni\n#START\n3,\n#END\n",c);
@@ -148,6 +155,12 @@ int main(int argc,char** argv) {
         if(!real) check(partial,"both files publish intermediate byte progress");
     }
     check(fs::exists(playable),"TJA ready");
+    if (!real) {
+        TJAParser credits(playable);
+        check(credits.metadata.maker=="A | B", "API aggregate reaches native parser");
+        TJAParser catalog_credits(path);
+        check(catalog_credits.metadata.maker=="A | B", "API aggregate reaches song select catalog");
+    }
     if(!real) {
         auto pop=path.parent_path().parent_path()/"pop";
         check(!client.load_directory(pop),"category uses server snapshot");

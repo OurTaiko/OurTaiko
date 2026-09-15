@@ -31,7 +31,7 @@ def score(endpoint, **changes):
     return s
 
 def chart(endpoint):
-    return dict(id=SONG, versionId=VERSION, title='Second' if endpoint=='second' else 'First', subtitle='',
+    return dict(id=SONG, versionId=VERSION, title='Second' if endpoint=='second' else 'First', subtitle='', maker='A | B',
                 titleTranslations={'ja':'日本語タイトル'}, subtitleTranslations={},
                 tjaHash=hashlib.sha256(TJA).hexdigest(), audioHash=hashlib.sha256(AUDIO).hexdigest(),
                 encoding='utf-8', bpm=120, demoStart=0, audioName='fixture.ogg' if endpoint=='second' else 'Mistletoe.MP3',

@@ -38,7 +38,7 @@ void register_song_select_lua_bindings(sol::state& lua) {
 
     lua.new_usertype<SongBox>("SongBox",
         sol::base_classes, sol::bases<BaseBox>(),
-        "text_subtitle",  &SongBox::text_subtitle,
+        "text_subtitle",  sol::property(&SongBox::displayed_subtitle),
         "subtitle",       &SongBox::horizontal_subtitle,
         "subtitle_large", &SongBox::horizontal_subtitle_large,
         "bpm_text",     [](SongBox& self) { return self.bpm_text.get(); },

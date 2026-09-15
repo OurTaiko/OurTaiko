@@ -108,3 +108,11 @@ python3 tests/fanmade/fixture.py /tmp/fanmade-client-test
 bootstrap 新增各分类 `chartCount` 与顶层去重 `chartCount`。文件夹显示直接采用这些数量，避免把尚未加载的目录扫描为 0；服务器列表加载完成后改用实际返回的受支持谱面计数。兼容缺少数量字段的上一版服务器，首次加载前显示 `--`，不会把未知数量当成 0。服务器重新打开会刷新全部分类，失败不发布半份快照；跨分类下载及成绩缓存继续复用。
 
 原生 HTTP 夹具通过重复 bootstrap、后台请求不阻塞主线程 update、服务器加载、进入分类无网络、跨分类去重、移除归属、空分类归零及中途失败保留文件／注册表／数量检查；既有下载、代理、成绩与版本隔离回归通过。后端 PostgreSQL 集成测试验证 bootstrap 去重总数与各分类数量。iOS Simulator Release 完整构建通过；本次未安装或运行游戏界面，真机、Android 和 Windows 运行回归尚未执行。
+
+## 谱师署名与字幕轮播（2026-09-15）
+
+客户端读取歌曲级 `maker`（例如 `A | B`），不读取各难度的 maker。分类目录的预览 TJA 和游玩缓存均使用 API 汇总值写入 MAKER，原文件中的旧 MAKER 不再覆盖它；本地 TJA 也可解析 MAKER。
+
+选曲停留在一首歌时，SUBTITLE 与 `MADE BY <maker>` 各显示 3000ms，重新选曲从字幕开始。没有字幕时持续显示署名，没有署名时保持字幕；两者都空时不显示额外文本。C++ 竖排、横排文字接口和 Lua 的 text_subtitle 属性共用轮换状态；歌曲原始 subtitle 保留供搜索、收藏及过场使用。演奏页面已有字幕槽也采用同一轮换规则；未配置演奏字幕槽的皮肤保留原布局。
+
+`tests/fanmade/client.cpp` 覆盖 2999/3000/5999/6000ms 边界、空字段和重复轮换，原生 API 夹具验证汇总署名进入目录/游玩缓存和 TJAParser。iOS Simulator Release 编译通过；这些检查不替代真机、Android/Windows 或各皮肤的实际画面回归。

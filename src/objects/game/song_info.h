@@ -22,12 +22,15 @@ private:
     FadeAnimation* fade;
     std::unique_ptr<OutlinedText> song_title;
     std::unique_ptr<OutlinedText> song_subtitle;
+    std::unique_ptr<OutlinedText> maker_credit;
+    double rotation_started_at = -1;
+    bool showing_maker = false;
     std::unique_ptr<SongNum> song_num;
     std::unique_ptr<SongNum> song_max;
 
 public:
     SongInfo() = default;
-    SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total = 0);
+    SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total = 0, const std::string& maker = "");
 
     void update(double current_ms);
     void draw();

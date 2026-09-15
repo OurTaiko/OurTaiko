@@ -5,6 +5,7 @@
 #include <thread>
 #include "../../../libs/fanmade.h"
 #include <limits>
+#include "../../../libs/subtitle_rotation.h"
 
 namespace {
     double bgm_resume_at   = 0.0;   // 0 = nothing pending
@@ -37,6 +38,8 @@ SongBox::SongBox(const fs::path& path, const BoxDef& box_def, SongParser parser)
     auto& subtitles = parser.metadata.subtitle;
     text_subtitle = subtitles.count(lang) ? subtitles.at(lang) : subtitles.count("en") ? subtitles.at("en") : subtitles.empty() ? "" : subtitles.begin()->second;
 
+    text_maker = parser.metadata.maker.empty() ? "" : "MADE BY " + parser.metadata.maker;
+    showing_maker = text_subtitle.empty() && !text_maker.empty();
     this->parser = std::move(parser);
     is_ura = has_ura() && !this->parser.metadata.course_data.count((int)Difficulty::ONI);
 
@@ -105,6 +108,7 @@ void SongBox::reset() {
     release_preview_slot();
     score_history.reset();
     box_opened_at = 0.0;
+    showing_maker = text_subtitle.empty() && !text_maker.empty();
 }
 
 std::vector<Difficulty> SongBox::get_diffs() {
@@ -120,6 +124,8 @@ void SongBox::preregister_text() {
     float base_sub_font = (float)tex.skin_config[SC::YB_SUBTITLE].font_size;
     float sub_font = utf8_char_count(text_subtitle) >= 30 ? base_sub_font - 10.0f * tex.screen_scale : base_sub_font;
     font_manager.register_text(text_subtitle, (int)sub_font);
+    float maker_font = utf8_char_count(text_maker) >= 30 ? base_sub_font - 10.0f * tex.screen_scale : base_sub_font;
+    font_manager.register_text(text_maker, (int)maker_font);
     float base_name_font = (float)tex.skin_config[SC::SONG_BOX_NAME].font_size;
     float name_font = utf8_char_count(text_name) >= 30 ? base_name_font - 10.0f * tex.screen_scale : base_name_font;
     font_manager.register_text(text_name, (int)name_font);
@@ -137,6 +143,10 @@ void SongBox::load_text() {
     }
     subtitle = make_unique<OutlinedText>(text_subtitle, (int)font_size, ray::WHITE, ray::BLACK, true, sub_outline);
 
+    if (!text_maker.empty() && base_sub_font > 0) {
+        float maker_font = utf8_char_count(text_maker) >= 30 ? base_sub_font - 10.0f * tex.screen_scale : base_sub_font;
+        maker_subtitle = make_unique<OutlinedText>(text_maker, (int)maker_font, ray::WHITE, ray::BLACK, true, 5.0f * maker_font / base_sub_font);
+    }
     float base_name_font = (float)tex.skin_config[SC::SONG_BOX_NAME].font_size;
     font_size = base_name_font;
     float name_outline = 5.0f;
@@ -157,6 +167,8 @@ void SongBox::load_text() {
 void SongBox::update(double current_time) {
     BaseBox::update(current_time);
     diff_fade_in->update(current_time);
+    showing_maker = show_maker_credit(!text_subtitle.empty(), !text_maker.empty(),
+                                      yellow_box ? current_time - box_opened_at : 0.0);
 
     auto wave_ext = parser.metadata.wave.extension();
     bool is_bank = wave_ext == ".nus3bank" || wave_ext == ".nub";
@@ -216,6 +228,7 @@ void SongBox::update(double current_time) {
 void SongBox::expand_box() {
     BaseBox::expand_box();
     box_opened_at = get_current_ms();
+    showing_maker = text_subtitle.empty() && !text_maker.empty();
     if (!holds_preview_slot && fs::exists(parser.metadata.wave)) {
         holds_preview_slot = true;
         preview_holders++;
@@ -231,6 +244,7 @@ void SongBox::release_preview_slot() {
 void SongBox::close_box() {
     BaseBox::close_box();
     box_opened_at = 0.0;
+    showing_maker = text_subtitle.empty() && !text_maker.empty();
     preview_load.reset();
     preview_attempted = false;
     release_preview_slot();
@@ -383,8 +397,9 @@ void SongBox::draw_diff_select() {
 
 void SongBox::draw_text() {
     float x = position + (yellow_box->right_out->attribute*0.90 - (yellow_box->right_out->start_position*0.90)) + yellow_box->right_out_2->attribute - yellow_box->right_out_2->start_position;
-    float h = std::min((float)subtitle->height, tex.skin_config[SC::YB_SUBTITLE].height);
-    subtitle->draw({.x = x + tex.skin_config[SC::YB_SUBTITLE].x, .y=tex.skin_config[SC::YB_SUBTITLE].y - h + (float)yellow_box->top_y_out->attribute - yellow_box->top_y_out->start_position, .y2 =h - subtitle->height, .fade=open_fade->attribute});
+    auto* current_subtitle = showing_maker && maker_subtitle ? maker_subtitle.get() : subtitle.get();
+    float h = std::min((float)current_subtitle->height, tex.skin_config[SC::YB_SUBTITLE].height);
+    current_subtitle->draw({.x = x + tex.skin_config[SC::YB_SUBTITLE].x, .y=tex.skin_config[SC::YB_SUBTITLE].y - h + (float)yellow_box->top_y_out->attribute - yellow_box->top_y_out->start_position, .y2 =h - current_subtitle->height, .fade=open_fade->attribute});
     float name_h = std::min((float)this->name->height, tex.skin_config[SC::SONG_BOX_NAME].height) - this->name->height;
     float name_x = x + tex.skin_config[SC::SONG_BOX_NAME].x - (int)(this->name->width / 2);
     float name_y = tex.skin_config[SC::SONG_BOX_NAME].y + (float)yellow_box->top_y_out->attribute - yellow_box->top_y_out->start_position;

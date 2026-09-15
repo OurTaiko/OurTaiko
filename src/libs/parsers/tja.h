@@ -192,6 +192,7 @@ struct CourseData {
 struct TJAMetadata {
     std::map<std::string, std::string> title = {{"en", ""}};
     std::map<std::string, std::string> subtitle = {{"en", ""}};
+    std::string maker;
     bool subtitle_full_display = false;
     std::string genre = "";
     fs::path wave;
