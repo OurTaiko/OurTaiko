@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "config.h"
+#include "dan_exam.h"
 #include "ray.h"
 #include "parsers/tja.h"
 
@@ -44,43 +45,6 @@ enum class Rank {
     _PURPLE = 6,
     _RAINBOW = 7
 };
-
-struct Exam {
-    std::string type;   // "gauge","combo","judgebad","judgegood","judgeperfect","hit","score"
-    int red = 0;
-    int gold = 0;
-    std::string range;  // "less" or "more"
-    bool gothrough = true;
-};
-
-inline std::string dan_bar_state(const Exam& exam, int value,
-                                 bool live = false,
-                                 bool near_end = false,
-                                 bool just_before_end = false) {
-    const bool down = (exam.range == "less");
-    // CheckMax
-    if (exam.gold > 0 && ((down && value < exam.gold) || (!down && value >= exam.gold))) {
-        if (!live || !down) return "max";
-        if (just_before_end) return "max_soon2";
-        if (near_end)        return "max_soon";
-        // fall through to the flat palette -- no `max` during play
-    }
-    int gauge = (exam.red > 0)
-        ? (int)std::floor(100.0 * (double)value / (double)exam.red) : 100;
-    if (gauge > 100) gauge = 100;
-    if (down) { gauge = 100 - gauge; if (gauge < 0) gauge = 0; }
-    if (gauge <= 0) return "empty";
-    if (!down) {
-        if (gauge <= 49) return "up_50";
-        if (gauge <= 99) return "up_80";
-        return "up_100";
-    }
-    const int good = (exam.red > 0 && exam.gold > 0)
-        ? 100 - (int)std::floor(100.0 * (double)exam.gold / (double)exam.red) : 100;
-    if (gauge < 30)    return "down_80";
-    if (gauge <= good) return "up_80";
-    return "down_100";
-}
 
 struct DanSongEntry {
     fs::path song_path;
@@ -130,6 +94,7 @@ struct DanResultData {
     std::vector<Exam> exams;
     std::vector<DanResultExam> exam_data;
     int odai_result = -1;
+    bool skipped = false;       // the player skipped out: nothing is recorded
 };
 
 struct ResultData {

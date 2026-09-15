@@ -464,10 +464,18 @@ void ScriptManager::register_lua_bindings() {
     });
 
     tex.set_function("get_id", [](const std::string& subset, const std::string& texture_name) -> sol::optional<uint32_t> {
-        auto it = tex_id_map.find(subset + "/" + texture_name);
-        if (it != tex_id_map.end()) return it->second;
-        it = tex_id_map.find(subset + "/" + texture_name + "_" + global_data.config->general.language);
-        if (it != tex_id_map.end()) return it->second;
+        auto& wrapper = script_manager.tex;
+        const std::string plain = subset + "/" + texture_name;
+        if (wrapper.has_texture(plain)) return static_cast<uint32_t>(wrapper.get_enum(plain));
+        const std::string localized = plain + "_" + global_data.config->general.language;
+        if (wrapper.has_texture(localized)) return static_cast<uint32_t>(wrapper.get_enum(localized));
+        // get_id also supports scripts caching an ID before its folder is loaded.
+        auto known = tex_id_map.find(plain);
+        if (known != tex_id_map.end()) return static_cast<uint32_t>(known->second);
+        for (const auto& variant : wrapper.language_variants(localized)) {
+            known = tex_id_map.find(variant);
+            if (known != tex_id_map.end()) return static_cast<uint32_t>(known->second);
+        }
         return std::nullopt;
     });
 
@@ -488,14 +496,28 @@ void ScriptManager::register_lua_bindings() {
 
         script_manager.tex.load_folder(screen_name, subset);
 
-        auto it = tex_id_map.find(subset + "/" + texture_name + "_" + global_data.config->general.language);
-        if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
-        it = tex_id_map.find(subset + "/" + texture_name);
-        if (it != tex_id_map.end()) return static_cast<uint32_t>(it->second);
+        auto& wrapper = script_manager.tex;
+        const std::string plain = subset + "/" + texture_name;
+        const std::string localized = plain + "_" + global_data.config->general.language;
+        if (wrapper.has_texture(localized)) return static_cast<uint32_t>(wrapper.get_enum(localized));
+        if (wrapper.has_texture(plain)) return static_cast<uint32_t>(wrapper.get_enum(plain));
         return sol::nullopt;
     });
 
     tex.set_function("language", []() { return global_data.config->general.language; });
+    // skin_config text for the current interface language: tex.skin_text("entry_game")
+    // -> the "text" map's entry for the language, else ja, else en, else the first entry,
+    // else "" (a Lua script should never need to carry a string of its own).
+    tex.set_function("skin_text", [](const std::string& key, sol::optional<std::string> lang_opt) -> std::string {
+        auto it = script_manager.tex.skin_config_by_name.find(key);
+        if (it == script_manager.tex.skin_config_by_name.end()) return "";
+        const auto& m = it->second.text;
+        for (const std::string& l : {lang_opt.value_or(global_data.config->general.language), std::string("ja"), std::string("en")}) {
+            auto t = m.find(l);
+            if (t != m.end() && !t->second.empty()) return t->second;
+        }
+        return m.empty() ? std::string() : m.begin()->second;
+    });
 
     tex.set_function("skip_enabled", []() { return global_data.live_skip_count >= 0; });
 
