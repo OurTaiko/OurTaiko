@@ -446,7 +446,7 @@ jobs:
           test -f "$APP_PATH/Info.plist"
           test -x "$APP_PATH/OurTaiko"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP_PATH/Info.plist")" = "iPhoneOS"
-          xcrun lipo -verify_arch arm64 "$APP_PATH/OurTaiko"
+          xcrun lipo "$APP_PATH/OurTaiko" -verify_arch arm64
 
           IPA_STAGE="$(mktemp -d "$RUNNER_TEMP/yataidon-ipa.XXXXXX")"
           trap 'rm -rf "$IPA_STAGE"' EXIT
