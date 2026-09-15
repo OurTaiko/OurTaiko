@@ -1,7 +1,7 @@
 #include "config.h"
 #include "ray.h"
 #include <algorithm>
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
 #include "../platform/ios_network_settings.h"
 #endif
 
@@ -232,7 +232,7 @@ Config get_config() {
     config.general.player_2_id = config_file["general"]["player_2_id"].value_or(1);
     config.general.touch_input = config_file["general"]["touch_input"].value_or(false);
 
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
     if (ios_network_settings_need_migration())
         ios_initialize_network_settings(parse_network_servers(config_file));
     config.network.servers = ios_network_servers();
@@ -358,7 +358,7 @@ void save_config(const Config& config) {
         {"touch_input", config.general.touch_input}
     });
 
-#ifndef PLATFORM_IOS
+#ifndef OURTAIKO_PLATFORM_IOS
     toml::array servers;
     for (const auto& server : config.network.servers) {
         servers.push_back(toml::table{{"name", server.name}, {"base_url", server.base_url},

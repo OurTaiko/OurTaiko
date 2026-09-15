@@ -2,7 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
 #include "../../src/platform/ios_network_settings.h"
 static bool needs_migration = false;
 static std::vector<fanmade::ServerConfig> imported;
@@ -30,7 +30,7 @@ http_proxy = 'http://127.0.0.1:3128'
 )";}
         auto config=get_config();
         check(config.general.audio_offset==42,"non-network settings stay in TOML");
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
         check(config.network.servers.size()==1 && config.network.servers[0].username=="system-user","iOS exclusively reads system settings");
         check(imported.empty(),"initialized iOS never imports TOML");
         needs_migration=true;
@@ -41,7 +41,7 @@ http_proxy = 'http://127.0.0.1:3128'
 #endif
         save_config(config);
         auto saved=toml::parse_file("config.toml");
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
         check(!saved.contains("network"),"iOS does not copy system passwords back into TOML");
 #else
         check(saved["network"]["servers"][0]["password"].value_or(std::string{})=="toml-password","other platforms preserve network configuration when saving");

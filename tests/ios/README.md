@@ -17,7 +17,7 @@ argument; the fixture writes a synthetic config.toml there.
 
 ```sh
 clang++ -std=c++20 -I.cmake-deps/tomlplusplus-src/include -I.cmake-deps/spdlog-src/include -I.cmake-deps/raylib-src/src tests/ios/config_source.cpp src/libs/config.cpp -o /tmp/ourtaiko-config-desktop-test
-clang++ -std=c++20 -DPLATFORM_IOS -I.cmake-deps/tomlplusplus-src/include -I.cmake-deps/spdlog-src/include -I.cmake-deps/raylib-src/src -Ibuild-ios-device/_deps/sdl3-src/include tests/ios/config_source.cpp src/libs/config.cpp -o /tmp/ourtaiko-config-ios-test
+clang++ -std=c++20 -DOURTAIKO_PLATFORM_IOS -I.cmake-deps/tomlplusplus-src/include -I.cmake-deps/spdlog-src/include -I.cmake-deps/raylib-src/src -Ibuild-ios-device/_deps/sdl3-src/include tests/ios/config_source.cpp src/libs/config.cpp -o /tmp/ourtaiko-config-ios-test
 python3 - <<'PYTEST'
 import subprocess, tempfile
 for variant in ('desktop', 'ios'):

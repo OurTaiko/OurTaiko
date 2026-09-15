@@ -1,7 +1,8 @@
 enable_language(OBJCXX)
 target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/src/platform/ios.mm"
   "${CMAKE_SOURCE_DIR}/src/platform/ios_network_settings.mm")
-target_compile_definitions(${PROJECT_NAME} PRIVATE PLATFORM_IOS)
+# Mach-O headers also define PLATFORM_IOS on macOS; use an app-specific guard.
+target_compile_definitions(${PROJECT_NAME} PRIVATE OURTAIKO_PLATFORM_IOS)
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3-static
   "-framework UIKit" "-framework Foundation" "-framework OpenGLES"
   "-framework AudioToolbox" "-framework AVFoundation" "-framework CoreMedia"
