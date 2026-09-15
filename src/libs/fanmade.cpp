@@ -17,6 +17,9 @@
 #include <rapidjson/writer.h>
 #if defined(FANMADE_NETWORK)
 #include <cpr/cpr.h>
+#if defined(__ANDROID__)
+#include <SDL3/SDL_iostream.h>
+#endif
 #endif
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -157,6 +160,21 @@ using TransferCallback = std::function<void(uint64_t, uint64_t)>;
 std::string request(Endpoint& e,const std::string& path,const std::string& body="",const std::string& key="",size_t limit=64*1024*1024, std::shared_ptr<std::atomic_bool> cancel={}, TransferCallback progress={}) {
     if(cancel && *cancel) throw std::runtime_error("DOWNLOAD_CANCELLED");
     cpr::Session s;
+#if defined(__ANDROID__)
+    // Android's OpenSSL curl cannot use the Java system trust store. SDL reads
+    // the CA bundle from APK assets, even after the game changes directory.
+    static const std::string ca_bundle=[] {
+        size_t size=0;
+        void* data=SDL_LoadFile("cacert.pem", &size);
+        if(!data) throw std::runtime_error("TLS_CA_BUNDLE_MISSING");
+        std::unique_ptr<void, decltype(&SDL_free)> owned(data, SDL_free);
+        if(!size) throw std::runtime_error("TLS_CA_BUNDLE_INVALID");
+        return std::string(static_cast<const char*>(data), size);
+    }();
+    curl_blob ca{const_cast<char*>(ca_bundle.data()), ca_bundle.size(), CURL_BLOB_COPY};
+    if(curl_easy_setopt(s.GetCurlHolder()->handle, CURLOPT_CAINFO_BLOB, &ca)!=CURLE_OK)
+        throw std::runtime_error("TLS_CA_BUNDLE_INVALID");
+#endif
     if(cancel) s.SetCancellationParam(cancel);
     if(progress) s.SetProgressCallback(cpr::ProgressCallback{[&](cpr::cpr_pf_arg_t total, cpr::cpr_pf_arg_t now, cpr::cpr_pf_arg_t, cpr::cpr_pf_arg_t, intptr_t) {
         progress(now > 0 ? static_cast<uint64_t>(now) : 0,
@@ -176,11 +194,25 @@ std::string request(Endpoint& e,const std::string& path,const std::string& body=
     if(!key.empty()) headers["Idempotency-Key"]=key;
     s.SetHeader(headers);
     std::string bytes;
+    bool size_exceeded=false;
     s.SetWriteCallback(cpr::WriteCallback{[&](std::string_view part,intptr_t) {
-        if(part.size()>limit-bytes.size()) return false; bytes.append(part); return true;
+        if(part.size()>limit-bytes.size()) { size_exceeded=true; return false; }
+        bytes.append(part); return true;
     }});
     auto r=body.empty()?s.Get():s.Post();
-    if(r.error.code!=cpr::ErrorCode::OK) throw std::runtime_error("NETWORK_OR_SIZE_ERROR");
+    if(cancel && *cancel) throw std::runtime_error("DOWNLOAD_CANCELLED");
+    if(size_exceeded) throw std::runtime_error("RESPONSE_SIZE_LIMIT_EXCEEDED");
+    switch(r.error.code) {
+        case cpr::ErrorCode::OK: break;
+        case cpr::ErrorCode::COULDNT_RESOLVE_HOST: throw std::runtime_error("NETWORK_DNS_ERROR");
+        case cpr::ErrorCode::COULDNT_RESOLVE_PROXY: throw std::runtime_error("NETWORK_PROXY_DNS_ERROR");
+        case cpr::ErrorCode::COULDNT_CONNECT: throw std::runtime_error("NETWORK_CONNECT_ERROR");
+        case cpr::ErrorCode::OPERATION_TIMEDOUT: throw std::runtime_error("NETWORK_TIMEOUT");
+        case cpr::ErrorCode::PEER_FAILED_VERIFICATION: throw std::runtime_error("TLS_CERTIFICATE_VERIFY_FAILED");
+        case cpr::ErrorCode::SSL_CACERT_BADFILE: throw std::runtime_error("TLS_CA_BUNDLE_INVALID");
+        case cpr::ErrorCode::SSL_CONNECT_ERROR: throw std::runtime_error("TLS_HANDSHAKE_FAILED");
+        default: throw std::runtime_error("NETWORK_ERROR_"+std::to_string(static_cast<int>(r.error.code)));
+    }
     if(r.status_code<200||r.status_code>=300) throw HttpError((int)r.status_code);
     return bytes;
 }

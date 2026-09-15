@@ -36,6 +36,10 @@ http_proxy = ""
 
 `base_url` 是 API 服务的根地址，客户端添加 `/api/v1/...`。`name` 是选曲中的文件夹名。相同 API 地址和用户名视为同一个配置；不同账号的成绩和缓存相互隔离。空 `http_proxy` 显式禁用代理，包括环境变量中的代理。HTTP/HTTPS 下载禁止自动跳转，并保留 TLS 证书校验。公网服务请使用 HTTPS。
 
+Android 的原生 OpenSSL 客户端使用 APK 内置 `cacert.pem` 验证 HTTPS。
+证书、DNS、连接超时和响应体超限现在分别显示错误；旧版统一提示
+`NETWORK_OR_SIZE_ERROR` 的 Android 证书问题见 [修复记录](ANDROID_NETWORK_FIX.md)。
+
 账号密码保存在对应平台的本机配置中，Bearer token 只在进程内保存，到期自动重新登录。含密码的配置不要提交到 Git；仓库已忽略 `dev-config.toml`。原 `online_play`、`sync_scores` 和 `access_code` 已从配置结构、读写和设置绑定中移除。旧文件含这些字段仍可读取，保存配置时会自动清除；`network.servers` 中的服务器及账号配置继续保留。游戏载入皮肤设置模板时会过滤这三个旧选项及因此变空的分类，兼容已安装的旧皮肤。
 
 ## 生命周期

@@ -459,6 +459,13 @@ if(FANMADE_NETWORK)
     set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
   endif()
   if(ANDROID)
+    set(CPR_USE_SYSTEM_CURL OFF CACHE BOOL "" FORCE)
+    set(CPR_ENABLE_SSL ON CACHE BOOL "" FORCE)
+    set(CPR_FORCE_OPENSSL_BACKEND ON CACHE BOOL "" FORCE)
+    # fanmade supplies the APK's CA bundle with CURLOPT_CAINFO_BLOB. Never
+    # bake a build machine's certificate paths into the Android library.
+    set(CPR_SKIP_CA_BUNDLE_SEARCH ON CACHE BOOL "" FORCE)
+    set(CURL_CA_BUNDLE "none" CACHE STRING "" FORCE)
     set(CURL_USE_OPENSSL ON CACHE BOOL "" FORCE)
     set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
     set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)
