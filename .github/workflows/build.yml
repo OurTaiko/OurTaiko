@@ -342,6 +342,13 @@ jobs:
           yes | $SDKMANAGER --licenses >/dev/null 2>&1 || true
           $SDKMANAGER "ndk;27.3.13750724" "cmake;3.22.1" "platforms;android-35" "build-tools;34.0.0"
 
+      - name: Check Android game data recovery
+        run: |
+          javac --release 11 -d "$RUNNER_TEMP/ourtaiko-android-tests" \
+            android/app/src/main/java/org/ourtaiko/fanmade/GameDataInstaller.java \
+            tests/android/GameDataInstallerTest.java
+          java -cp "$RUNNER_TEMP/ourtaiko-android-tests" org.ourtaiko.fanmade.GameDataInstallerTest
+
       - name: Cache FFmpeg for Android arm64
         id: cache-ffmpeg
         uses: actions/cache@v4
@@ -371,9 +378,6 @@ jobs:
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
           echo "cmake.dir=$ANDROID_SDK_ROOT/cmake/3.22.1" >> android/local.properties
-
-      - name: Patch config for Android
-        run: sed -i 's/^touch_input = false/touch_input = true/' config.toml
 
       - name: Build Release APK
         working-directory: android

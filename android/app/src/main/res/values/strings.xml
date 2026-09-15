@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">OurTaiko</string>
+    <string name="preparing_game_data">Preparing OurTaiko files…
+The first launch may take a few minutes.</string>
+    <string name="storage_permission_required">Allow file access so OurTaiko can prepare skins and settings in internal storage.</string>
+    <string name="game_data_failed">Could not prepare game files. Check file access and available storage, then retry.</string>
+    <string name="retry">Retry</string>
+    <string name="close_app">Close</string>
 </resources>

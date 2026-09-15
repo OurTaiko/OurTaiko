@@ -62,8 +62,12 @@ Download the latest release for your operating system from the [releases page](h
 
 #### Android
 1. Install `OurTaiko-Android.apk` (enable "install from unknown sources" if needed)
-2. Place assets in `/sdcard/OurTaiko`. Specifically, you will need `Skins`, `Songs`, and `config.toml`. For example, the default skin belongs in `/sdcard/OurTaiko/Skins/PyTaikoGreen/`.
-3. Allow OurTaiko to access all files when prompted, then restart the app.
+2. Allow OurTaiko to access files when prompted. The app prepares bundled skins, songs, and default settings before starting the game; the first launch may take a few minutes.
+3. Add your own songs to `/sdcard/OurTaiko/Songs/` and skins to `/sdcard/OurTaiko/Skins/`.
+
+Every launch restores missing bundled files, including `/sdcard/OurTaiko/config.toml`.
+Existing settings, skins, and songs are preserved. Delete `config.toml` and restart
+to restore the bundled defaults (touch controls and VSync enabled).
 
 #### macOS
 1. Extract `OurTaiko-macOS.zip` and run `./OurTaiko` from its directory.
@@ -72,7 +76,8 @@ Download the latest release for your operating system from the [releases page](h
 1. Download `OurTaiko-iOS-unsigned.ipa`, sign it for your device, and install it (see the [iOS guide](ios/README.md)).
 
 The display name and build products use OurTaiko. Both Android and iOS use
-`org.ourtaiko.fanmade` as the application ID. Android launches through
+`org.ourtaiko.fanmade` as the application ID. Android prepares files through
+`org.ourtaiko.fanmade.OurTaikoLauncherActivity`, then starts the game in
 `org.ourtaiko.fanmade.OurTaikoActivity`. The new application ID installs separately
 from the original app; existing private app data is not transferred automatically.
 Android reads shared assets only from `/sdcard/OurTaiko`; no legacy data directory

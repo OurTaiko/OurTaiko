@@ -47,6 +47,21 @@ git -c http.https://ese.tjadataba.se/.sslVerify=false submodule update --init --
 当前三个仓库可匿名访问，不需要皮肤凭据。如果上游以后改为私有，
 同时设置仓库 Secrets `GITEA_USER` 和 `GITEA_TOKEN`；二者不能只设置一个。
 
+## Android 内置资源与首次启动
+
+Gradle 的 `copyGameAssets` 任务把三个皮肤、仓库内的 Songs、默认 `config.toml`、
+LICENSE 和 NOTICE 打进 APK，排除皮肤中的 Git 元数据。默认配置启用触摸输入和 VSync，
+本地构建与 CI 使用相同的打包逻辑，不修改仓库中的配置文件。
+
+启动器先检查存储权限，再在后台准备 `/sdcard/OurTaiko` 中的文件，完成后启动 SDL 游戏。
+Android 10 使用存储写入权限，Android 11 及以上使用“所有文件访问”权限。
+每次启动都会补齐缺失的内置文件；已有配置、皮肤和歌曲保留。
+删除 `config.toml` 后再启动即可恢复默认配置。不会读取或迁移旧目录。
+复制失败时提示重试，单个文件通过临时文件写入，避免将半成品当成完整文件。
+皮肤包含在 APK 中，因此安装包大小与首次资源准备耗时都会增加。
+
+验证方法见 [Android 资源初始化检查](../tests/android/README.md)。
+
 ## OurTaiko 自己的 Android 发布密钥
 
 APK 使用长期保存的同一把签名密钥，才能为现有安装正常提供更新。
