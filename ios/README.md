@@ -143,6 +143,10 @@ and its build switch have been removed. See [the latency fix log](LATENCY_FIX.md
 for the investigation, measurements, and instructions for rebuilding diagnostics
 if the problem recurs.
 
+For missing audio at the beginning of a song, see [the song startup fix log](SONG_START_FIX.md).
+Gameplay now waits for asynchronous audio loading before advancing the chart and
+opening transition, so slower decoding does not skip the beginning of the music.
+
 ## Online services
 
 iOS uses OurTaiko Fanmade for chart discovery, file downloads, and score sync.

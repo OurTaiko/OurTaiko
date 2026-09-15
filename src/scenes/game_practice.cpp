@@ -287,7 +287,9 @@ std::optional<Screens> PracticeGameScreen::update() {
     Screen::update();
 
     double current_ms = get_frame_ms();
-    transition->update(current_ms);
+    const bool loading_song = poll_pending_song(current_ms);
+    transition->update(current_ms - song_loading_delay_ms);
+    if (loading_song) return std::nullopt;
     if (!paused) {
         if (song_started && song_music.has_value() && audio.is_sound_playing(song_music.value())) {
             double audio_ms = audio.get_sound_time_played(song_music.value()) * 1000.0;
@@ -298,9 +300,8 @@ std::optional<Screens> PracticeGameScreen::update() {
             ms_from_start = current_ms - start_ms;
         }
     }
-    poll_pending_song();
     if (transition->is_finished()) {
-        start_song(current_ms);
+        start_song(ms_from_start);
         global_data.input_locked = 0;
     }
 

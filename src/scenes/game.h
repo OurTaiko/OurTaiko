@@ -31,6 +31,8 @@ public:
     std::optional<VideoPlayer> movie;
     std::optional<std::string> song_music;
     std::future<std::string> pending_song_load;
+    double song_loading_frame_ms = 0;
+    double song_loading_delay_ms = 0;
     std::optional<SongParser> parser;
     std::string scene_preset;
     std::vector<std::unique_ptr<Player>> players;
@@ -55,7 +57,7 @@ public:
 
     void start_song(double ms_from_start);
 
-    void poll_pending_song();
+    bool poll_pending_song(double current_ms);
 
     void restart_song();
 
