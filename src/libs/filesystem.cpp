@@ -9,7 +9,7 @@
 #include <spdlog/spdlog.h>
 #include <unistd.h>
 
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
     #include "../platform/ios.h"
 #endif
 
@@ -21,10 +21,10 @@
 #endif
 
 void set_working_directory_to_executable() {
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
     ios_prepare_filesystem();
 #elif defined(__ANDROID__)
-    std::filesystem::path exe_dir("/sdcard/YataiDON");
+    std::filesystem::path exe_dir("/sdcard/OurTaiko");
     std::error_code ec;
     std::filesystem::create_directories(exe_dir, ec);
     std::filesystem::current_path(exe_dir);

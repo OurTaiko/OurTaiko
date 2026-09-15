@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="preparing_game_data">正在准备 OurTaiko 文件…
+首次启动可能需要几分钟。</string>
+    <string name="storage_permission_required">请允许文件访问权限，以便 OurTaiko 在内部存储中准备皮肤和配置。</string>
+    <string name="game_data_failed">无法准备游戏文件。请检查文件访问权限和剩余存储空间，然后重试。</string>
+    <string name="retry">重试</string>
+    <string name="close_app">关闭</string>
+</resources>

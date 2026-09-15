@@ -34,9 +34,7 @@ visual_offset = 0
 webcam_number = -1
 
 [network]
-access_code = ''
-online_play = false
-sync_scores = false
+servers = [] # Native Fanmade servers; see docs/FANMADE.md
 
 [keys]
 back_key = 'escape'

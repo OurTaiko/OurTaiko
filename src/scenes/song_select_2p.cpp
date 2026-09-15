@@ -1,6 +1,7 @@
 #include "song_select_2p.h"
 #include "../libs/input.h"
 #include <filesystem>
+#include "../libs/fanmade.h"
 
 void SongSelect2PScreen::on_screen_start() {
     SongSelectScreen::on_screen_start();
@@ -72,16 +73,21 @@ void SongSelect2PScreen::select_song(SongBox* song) {
     if (exists(sd1.selected_song.parent_path() / "Loading.png")) {
         game_transition->add_loading_graphic((sd1.selected_song.parent_path() / "Loading.png").string());
     }
+    game_transition->set_remote_players({(int)PlayerNum::P1, (int)PlayerNum::P2});
     game_transition->start();
 }
 
 std::optional<Screens> SongSelect2PScreen::update() {
     Screen::update();
+    static uint64_t cloud_revision = 0;
+    if (cloud_revision != fanmade::client().revision()) {
+        cloud_revision = fanmade::client().revision(); navigator.refresh_scores();
+    }
     SongSelectState prev_state = state;
     double current_time = get_current_ms();
     diff_fade_out->update(current_time);
     script->update(current_time);
-    select_timer->update(current_time);
+    select_timer->update(current_time, navigator.is_server_loading());
     if (diff_select_timer != nullptr) diff_select_timer->update(current_time);
     indicator->update(current_time);
     if (search_box) search_box->update(current_time);
@@ -96,7 +102,7 @@ std::optional<Screens> SongSelect2PScreen::update() {
         apply_sort_window_result();
     }
 
-    poll_song_jump(current_time);
+    // Legacy song-jump polling is intentionally disconnected.
     handle_input(current_time);
 
     player->update(current_time);
@@ -121,6 +127,12 @@ std::optional<Screens> SongSelect2PScreen::update() {
 
     if (game_transition.has_value()) {
         game_transition->update(current_time);
+        if ((game_transition->loading() || !game_transition->error().empty()) && check_key_pressed(global_data.config->keys.back_key)) {
+            if (game_transition->loading()) game_transition->cancel_download();
+            else return on_screen_end(Screens::SONG_SELECT_2P);
+        }
+        if (game_transition->cancelled()) return on_screen_end(Screens::SONG_SELECT_2P);
+        if (game_transition->loading()) return std::nullopt;
         if (game_transition->is_finished()) {
             return on_screen_end(get_game_screen_target());
         }

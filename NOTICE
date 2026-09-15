@@ -1,0 +1,19 @@
+OurTaiko
+Author and maintainer of this modified version: OurTaiko
+
+Based on YataiDON, originally authored by Yono (Yonokid) and contributors.
+Original project: https://github.com/Yonokid/YataiDON
+Modified project: https://github.com/OurTaiko/OurTaiko
+
+This modified version is distributed under the GNU General Public License,
+version 3. The original license text is preserved in LICENSE. Original authors
+retain their copyright in their contributions; the OurTaiko attribution applies
+to this modified version and does not replace Yono's original authorship.
+
+This program is distributed without any warranty; see LICENSE for details.
+Third-party libraries, skins, and other assets retain their respective author
+attributions and license notices.
+
+Modified on 2026-09-15: renamed the application and build products to OurTaiko,
+identified OurTaiko as the author and maintainer of this modified version, and
+included the original GNU license and author attribution in build packages.

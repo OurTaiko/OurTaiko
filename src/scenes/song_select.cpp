@@ -1,6 +1,6 @@
 #include "song_select.h"
 #include "../libs/input.h"
-#include "../libs/network.h"
+#include "../libs/fanmade.h"
 #include <filesystem>
 
 void SongSelectScreen::on_screen_start() {
@@ -24,7 +24,7 @@ void SongSelectScreen::on_screen_start() {
 
     navigator.hide_dan = hides_dan();
     navigator.is_2p = is_2p_screen();
-    navigator.init(global_data.config->paths.tja_path);
+    navigator.init(fanmade::client().song_paths(global_data.config->paths.tja_path));
 #ifndef __EMSCRIPTEN__
     stats_future = std::async(std::launch::async, [this]() {
         return navigator.get_statistics(global_data.config->paths.tja_path[0]);
@@ -37,7 +37,7 @@ void SongSelectScreen::on_screen_start() {
 
     indicator = std::make_unique<Indicator>(Indicator::State::SELECT);
     song_num = std::make_unique<SongNum>(global_data.songs_played + 1);
-    select_timer = std::make_unique<Timer>(100, get_current_ms(), [this]() { player->select_song(); });
+    select_timer = std::make_unique<Timer>(100, get_current_ms(), [this]() { if(!navigator.is_server_loading()) player->select_song(); });
     diff_select_timer = nullptr;
     join_request_ms = -1.0;
 }
@@ -107,22 +107,8 @@ void SongSelectScreen::handle_input_search() {
     }
 }
 
-void SongSelectScreen::poll_song_jump(double current_ms) {
-    static constexpr double SONG_JUMP_POLL_INTERVAL_MS = 3000.0;
-    const std::string& access_code = global_data.config->network.access_code;
-
-    if (!access_code.empty() && state == SongSelectState::BROWSING &&
-        current_ms - last_song_jump_poll_ms >= SONG_JUMP_POLL_INTERVAL_MS) {
-        last_song_jump_poll_ms = current_ms;
-        network.poll_song_jump(access_code);
-    }
-
-    if (auto hash = network.take_song_jump_result()) {
-        navigator.jump_to_song(*hash);
-    }
-}
-
 std::optional<Screens> SongSelectScreen::poll_second_player_join(double current_ms) {
+    if(navigator.is_server_loading()) return std::nullopt;
     static constexpr double JOIN_WAIT_MS = 1.5 * 1000.0;
     if (join_request_ms >= 0.0) {
         if (current_ms - join_request_ms < JOIN_WAIT_MS) return std::nullopt;
@@ -155,7 +141,7 @@ std::optional<Screens> SongSelectScreen::poll_second_player_join(double current_
 }
 
 void SongSelectScreen::handle_input(double current_ms) {
-    if (navigator.is_processing || navigator.inline_streaming) {
+    if (navigator.is_server_loading() || navigator.is_processing || navigator.inline_streaming) {
         clear_input_buffers();
         return;
     }
@@ -184,7 +170,7 @@ std::optional<Screens> SongSelectScreen::update() {
     diff_fade_out->update(current_time);
     script->update(current_time);
     if (join_request_ms < 0.0) {
-        select_timer->update(current_time);
+        select_timer->update(current_time, navigator.is_server_loading());
         if (diff_select_timer != nullptr) diff_select_timer->update(current_time);
     }
     indicator->update(current_time);
@@ -204,7 +190,7 @@ std::optional<Screens> SongSelectScreen::update() {
         apply_sort_window_result();
     }
 
-    poll_song_jump(current_time);
+    // Legacy song-jump polling is intentionally disconnected.
     if (auto join = poll_second_player_join(current_time)) return join;
     if (join_request_ms >= 0.0) {
         clear_input_buffers();
@@ -224,10 +210,20 @@ std::optional<Screens> SongSelectScreen::update() {
         }
     }
 
+    static uint64_t cloud_revision = 0;
+    if (cloud_revision != fanmade::client().revision()) {
+        cloud_revision = fanmade::client().revision(); navigator.refresh_scores();
+    }
     if (screen_init) navigator.update(current_time);
 
     if (game_transition.has_value() && join_request_ms < 0.0) {
         game_transition->update(current_time);
+        if ((game_transition->loading() || !game_transition->error().empty()) && check_key_pressed(global_data.config->keys.back_key)) {
+            if (game_transition->loading()) game_transition->cancel_download();
+            else return on_screen_end(Screens::SONG_SELECT);
+        }
+        if (game_transition->cancelled()) return on_screen_end(Screens::SONG_SELECT);
+        if (game_transition->loading()) return std::nullopt;
         if (game_transition->is_finished()) {
             return on_screen_end(get_game_screen_target());
         }
@@ -272,7 +268,13 @@ Screens SongSelectScreen::on_screen_end(Screens next_screen) {
 }
 
 void SongSelectScreen::draw_overlays() {
+    auto cloud_status = fanmade::client().status();
+    if (!cloud_status.empty()) ray::DrawText(cloud_status.c_str(), 20, 20, 20, ray::WHITE);
     script->draw_overlays(state);
+    if(navigator.is_server_loading()) {
+        ray::DrawRectangle(0,tex.screen_height/2-35,tex.screen_width,90,ray::Fade(ray::BLACK,0.85f));
+        ray::DrawText("Refreshing category song lists...",40,tex.screen_height/2-20,24,ray::WHITE);
+    }
 
     tex.draw_texture(GLOBAL::SONG_NUM_BG, {.x=-(song_num->width-127), .x2=(song_num->width-127), .fade=0.75});
     song_num->draw(tex.skin_config[SC::SONG_NUM].x-song_num->width, tex.skin_config[SC::SONG_NUM].y, 1.0);

@@ -29,10 +29,10 @@ song library. Large skin videos increase both app size and first-launch copy tim
 
 ```sh
 ./build_ios.sh simulator
-open build-ios-simulator/YataiDON.xcodeproj
+open build-ios-simulator/OurTaiko.xcodeproj
 ```
 
-Select the YataiDON scheme and an installed iPhone or iPad Simulator, then Run.
+Select the OurTaiko scheme and an installed iPhone or iPad Simulator, then Run.
 The script uses your Mac's architecture; set `IOS_ARCH=x86_64` on Intel if needed.
 No Apple development team is required for the unsigned Simulator build.
 
@@ -40,12 +40,12 @@ No Apple development team is required for the unsigned Simulator build.
 
 ```sh
 IOS_DEVELOPMENT_TEAM=YOUR_TEAM_ID \
-IOS_BUNDLE_IDENTIFIER=com.yourname.yataidon \
+IOS_BUNDLE_IDENTIFIER=org.ourtaiko.fanmade \
 ./build_ios.sh device
-open build-ios-device/YataiDON.xcodeproj
+open build-ios-device/OurTaiko.xcodeproj
 ```
 
-Select your connected device and the YataiDON scheme. Check Signing & Capabilities
+Select your connected device and the OurTaiko scheme. Check Signing & Capabilities
 and select your Apple team, then Run. Enable Developer Mode on the device when
 Xcode requests it. Without a team, the script builds an unsigned `.app` for compile
 checks; it cannot be installed on a physical device until it is signed.
@@ -61,25 +61,23 @@ appropriate signing, artwork, and rights to the assets you include.
 ## Build an unsigned IPA with GitHub Actions
 
 The existing [Release workflow](../.github/workflows/build.yml) includes a
-`build-ios` job. In GitHub, open **Actions → Build YataiDON (Release) → Run workflow**
+`build-ios` job. In GitHub, open **Actions → Build OurTaiko (Release) → Run workflow**
 and select the branch containing the iOS changes. This runs all platform builds.
 
 The iOS job uses a `macos-15` runner and `./build_ios.sh device` to build an ARM64
-Release app for iOS 16.3 or later, with Bundle ID `com.yataidon.app` and code signing
-disabled. It packages the app as `Payload/YataiDON.app` inside
-`YataiDON-iOS-unsigned.ipa`, alongside `checksums-ios.sha256`. No Apple certificate,
+Release app for iOS 16.3 or later, with Bundle ID `org.ourtaiko.fanmade` and code signing
+disabled. It packages the app as `Payload/OurTaiko.app` inside
+`OurTaiko-iOS-unsigned.ipa`, alongside `checksums-ios.sha256`. No Apple certificate,
 provisioning profile, or App Store Connect credentials are required. There is no
 TestFlight or App Store upload step. Sign the downloaded IPA with your own signing
 tool and credentials before installing it on an iPhone or iPad.
 
-The job reuses the existing repository secrets:
+The job uses the existing `GITEA_USER` and `GITEA_TOKEN` repository secrets to
+fetch the private skin submodules. Fanmade networking is enabled by default and
+uses the installed app's TOML configuration; no API credentials are embedded in
+the build.
 
-- `GITEA_USER` and `GITEA_TOKEN` to fetch the private skin submodules.
-- `NETWORK_URL` and `NETWORK_AUTH_KEY` to enable the online client. When either is
-  absent, the build uses the offline implementation; runtime network switches
-  still follow the configuration described below.
-
-Download the `YataiDON-iOS` artifact from the workflow run after the iOS job
+Download the `OurTaiko-iOS` artifact from the workflow run after the iOS job
 succeeds. Once all platform builds succeed, the existing `latest` GitHub Release
 also receives the unsigned IPA and its SHA-256 checksum file. An iOS failure is
 included in the build summary and prevents that combined Release from publishing.
@@ -96,17 +94,21 @@ because the IPA is already a compressed ZIP archive.
 ## Songs, skins, and saves
 
 On first launch, bundled resources are copied into the app's Documents directory.
-Open **Files → On My iPhone/iPad → YataiDON**, or use Finder's device File Sharing.
+Open **Files → On My iPhone/iPad → OurTaiko**, or use Finder's device File Sharing.
 Add song folders under `Songs`, and skins under `Skins`. TJA files and their audio
 files must stay together. Restart the app to rescan new content. The shared folder
 also contains `config.toml`, score databases, caches, and `latest.log`.
 
 Existing files, including settings and scores, are preserved on app upgrades.
-Missing bundled files are restored at launch; bundled shaders are refreshed to
-match the executable. Uninstalling the app deletes its data container, so copy
+A `.game-data-installed` marker skips resource traversal after successful initial
+installation (including subsequent app upgrades). Remove this marker while the
+app is closed to reinstall missing bundled files. Bundled shaders alone are
+refreshed when their build-time content hash changes after an update. Uninstalling the app deletes its data container, so copy
 out any songs and scores you want to keep first.
 
-Touch input is enabled in the bundled default config. Tap inside the drum for Don
+Settings are read on each launch. Missing settings are recreated; invalid settings
+are backed up with an unused `.bak` suffix and replaced with complete defaults.
+Touch input and VSync are enabled in both bundled and recovered mobile defaults. Tap inside the drum for Don
 and outside for Kat; left and right halves retain the Android mappings. The top
 **Back** control replaces Android's system Back button. **Pause** toggles pause in
 single-player and two-player gameplay. Song search and text settings use the iOS
@@ -145,42 +147,35 @@ and its build switch have been removed. See [the latency fix log](LATENCY_FIX.md
 for the investigation, measurements, and instructions for rebuilding diagnostics
 if the problem recurs.
 
+For missing audio at the beginning of a song, see [the song startup fix log](SONG_START_FIX.md).
+Gameplay now waits for asynchronous audio loading before advancing the chart and
+opening transition, so slower decoding does not skip the beginning of the music.
+
 ## Online services
 
-iOS uses the existing Hiroba client for registration, profile and score sync,
-remote song selection, and online/version indicators. CPR and its pinned curl
-are built separately for Device and Simulator. HTTPS uses Apple's Secure Transport
-and system trust store, with certificate verification enabled; no Android CA
-bundle or host macOS OpenSSL installation is needed.
+iOS uses OurTaiko Fanmade for chart discovery, file downloads, and score sync.
+CPR and its pinned curl are built separately for Device and Simulator. HTTPS uses
+Apple's Secure Transport and system trust store with certificate verification
+required; no Android CA bundle or host macOS OpenSSL installation is needed.
 
-Configure the same backend values used by the other platforms in an untracked
-repository-root `.env` file:
+Networking is enabled by default (`FANMADE_NETWORK=ON`). Configure up to five
+independent endpoints in **Settings → Apps → OurTaiko**, then fully restart the
+game. Each server page contains an enable switch, name, base URL, username,
+secure password field, and optional HTTP proxy. New installations start with all
+servers disabled; server 1 has the OurTaiko Fanmade public URL prefilled.
 
-```dotenv
-NETWORK_URL=https://your-test-backend.example
-NETWORK_AUTH_KEY=your-backend-key
-```
+On the first upgrade, existing TOML servers are imported once (up to five), unless
+the user has already configured system settings. Subsequent iOS online reads use
+NSUserDefaults only; disabling every server does not restore old TOML settings.
+Saving ordinary game settings on iOS does not write online credentials back to
+TOML. Other platforms continue reading and writing `network.servers` in TOML.
+Other iOS game settings remain in Documents/config.toml.
 
-Reconfigure after changing these values. CMake caches them, so clear just those
-two entries to reload `.env` (preserve your signing team and Bundle ID):
-
-```sh
-IOS_DEVELOPMENT_TEAM=YOUR_TEAM_ID \
-IOS_BUNDLE_IDENTIFIER=com.yourname.yataidon \
-./build_ios.sh device -UNETWORK_URL -UNETWORK_AUTH_KEY
-```
-
-Without both values, the offline implementation is built. In the installed app's
-Documents `config.toml`, set `[network] online_play = true` to enable requests;
-set `sync_scores = true` if you also want startup score downloads, then restart.
-Leave `access_code` empty for first-time registration, or use your own existing
-code. Existing configurations are preserved on upgrade, so rebuilding alone does
-not turn these switches on. Local gameplay/saves remain available offline.
-
-The [network integration checks](../tests/network/README.md) exercise the actual
-client against an isolated fixture and test HTTPS trust on the Simulator. Real
-server credentials and physical-device sync still need end-to-end validation.
+See [Fanmade integration](../docs/FANMADE.md) for caching, score upload behavior,
+and native fixture commands. Local gameplay and saves remain available offline.
 Optional Fumen support still requires the same seeds as other platforms.
+The Settings.bundle is a signed app resource and is never copied into Documents.
+
 
 Platform references: [SDL's iOS integration](https://wiki.libsdl.org/SDL3/README-ios)
 and [CMake Apple cross-compilation](https://cmake.org/cmake/help/latest/manual/cmake-toolchains.7.html#cross-compiling-for-ios-tvos-visionos-or-watchos).

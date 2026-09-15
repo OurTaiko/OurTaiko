@@ -1,5 +1,5 @@
 #!/bin/bash
-# YataiDON Linux Updater
+# OurTaiko Linux Updater
 #
 # Expected GitHub release assets:
 #   checksums-linux.sha256  sha256sum-format, relative paths from install dir
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-REPO="yonokid/YataiDON"
+REPO="OurTaiko/OurTaiko"
 API_URL="https://api.github.com/repos/$REPO/releases/latest"
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSION_FILE="$INSTALL_DIR/.version"
@@ -144,7 +144,7 @@ if [ $NEED_PACKAGE -eq 1 ]; then
     curl -fL --progress-bar -o "$TMP_DIR/update-linux.tar.gz" "$url"
     log "Extracting..."
     tar -xzf "$TMP_DIR/update-linux.tar.gz" -C "$INSTALL_DIR"
-    chmod +x "$INSTALL_DIR/YataiDON"
+    chmod +x "$INSTALL_DIR/OurTaiko"
     log "Package applied."
 fi
 
@@ -179,4 +179,4 @@ if [ $NEED_SKIN_COUNT -gt 0 ]; then
 fi
 
 echo "$LATEST_TAG" > "$VERSION_FILE"
-log "Update complete ($LATEST_TAG). Restart YataiDON to apply."
+log "Update complete ($LATEST_TAG). Restart OurTaiko to apply."

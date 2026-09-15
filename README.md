@@ -1,12 +1,14 @@
-<img src="/docs/logo.png">
+# OurTaiko
+
+**Author and maintainer: OurTaiko.** Based on YataiDON by **Yono (Yonokid)**.
 
 A TJA player and Taiko simulator written in C++ using the [raylib](https://www.raylib.com/) library.
 
-![License](https://img.shields.io/github/license/Yonokid/YataiDON)
+![License](https://img.shields.io/badge/license-GPLv3-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20Android%20%7C%20iOS-blue)
-[![GitHub Stars](https://img.shields.io/github/stars/Yonokid/YataiDON?style=flat&label=stars)](https://github.com/Yonokid/YataiDON/stargazers)
+[![GitHub Stars](https://img.shields.io/github/stars/OurTaiko/OurTaiko?style=flat&label=stars)](https://github.com/OurTaiko/OurTaiko/stargazers)
 [![Discord Members](https://img.shields.io/discord/722513061419810946.svg?label=Discord&logo=discord)](https://discord.gg/XHcVYKW)
-[![Builds](https://github.com/Yonokid/YataiDON/actions/workflows/build.yml/badge.svg)](https://github.com/Yonokid/YataiDON/actions/workflows/build.yml)
+[![Builds](https://github.com/OurTaiko/OurTaiko/actions/workflows/build.yml/badge.svg)](https://github.com/OurTaiko/OurTaiko/actions/workflows/build.yml)
 
 ## Features
 
@@ -49,20 +51,48 @@ A: Change your `device_type` in game settings to `WDM-KS`, `WASAPI`, or `ASIO` i
 
 ### Pre-built Binaries
 
-Download the latest release for your operating system from the [releases page](https://github.com/Yonokid/YataiDON/releases).
+Download the latest release for your operating system from the [releases page](https://github.com/OurTaiko/OurTaiko/releases).
 
 #### Windows
 1. Install the [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) from Microsoft
-2. Run `YataiDON.exe`
+2. Run `OurTaiko.exe`
 
 #### Linux
-1. Run `YataiDON.bin`
+1. Run `./OurTaiko`
 
 #### Android
-1. Install `YataiDON-Android.apk` (enable "install from unknown sources" if needed)
-2. Place assets in `sdcard/YataiDON`. Specifically, you will need `Skins`, `Songs`, and `config.toml`.
+1. Install `OurTaiko-Android.apk` (enable "install from unknown sources" if needed)
+2. Allow OurTaiko to access files when prompted. The app prepares bundled skins, songs, and default settings before starting the game; this resource installation runs only once.
+3. Add your own songs to `/sdcard/OurTaiko/Songs/` and skins to `/sdcard/OurTaiko/Skins/`.
+
+After successful extraction, later launches skip bundled resource scanning, including
+app upgrades. Existing player files are preserved during the one-time migration.
+Settings are read on every launch: a missing file is recreated; an invalid file is
+backed up as `config.toml.bak` (additional `.bak` suffixes preserve older backups)
+and replaced with complete defaults. Android and iOS defaults enable touch controls
+and VSync. Delete `config.toml` and restart to reset settings. To reinstall missing
+bundled resources, close the app and remove `/sdcard/OurTaiko/.game-data-installed`;
+existing player files are preserved.
+
+#### macOS
+1. Extract `OurTaiko-macOS.zip` and run `./OurTaiko` from its directory.
+
+#### iOS
+1. Download `OurTaiko-iOS-unsigned.ipa`, sign it for your device, and install it (see the [iOS guide](ios/README.md)).
+
+The display name and build products use OurTaiko. Both Android and iOS use
+`org.ourtaiko.fanmade` as the application ID. Android prepares files through
+`org.ourtaiko.fanmade.OurTaikoLauncherActivity`, then starts the game in
+`org.ourtaiko.fanmade.OurTaikoActivity`. The new application ID installs separately
+from the original app; existing private app data is not transferred automatically.
+Android reads shared assets only from `/sdcard/OurTaiko`; no legacy data directory
+is read or migrated. The GitHub repository is `OurTaiko/OurTaiko`.
 
 ## Building from Source
+
+- [GitHub Actions builds and Android release signing](docs/CI.md)
+
+The wiki links below are the original upstream build guides.
 
 - [Linux](https://github.com/Yonokid/YataiDON/wiki/Linux)
 - [macOS](https://github.com/Yonokid/YataiDON/wiki/Mac-OS)
@@ -83,16 +113,20 @@ Download the latest release for your operating system from the [releases page](h
 ## Contributing
 
 Contributions are welcome! Please keep in mind:
-- Check the [issues page](https://github.com/Yonokid/YataiDON/issues) for enhancements and bugs before starting work
+- Check the [issues page](https://github.com/OurTaiko/OurTaiko/issues) for enhancements and bugs before starting work
 - Feel free to open new issues for bugs or feature requests
 
 ## Known Issues
 
-See the [issues page](https://github.com/Yonokid/YataiDON/issues) or the Discord for current bugs and planned enhancements.
+See the [issues page](https://github.com/OurTaiko/OurTaiko/issues) or the Discord for current bugs and planned enhancements.
 
 ## License
 
-This project is licensed under the terms specified in the LICENSE file.
+OurTaiko is a modified version of [YataiDON](https://github.com/Yonokid/YataiDON),
+originally authored by Yono (Yonokid). It retains the original GNU General Public
+License, version 3, in [LICENSE](LICENSE). Original author attribution and third-party
+notices are preserved; see [NOTICE](NOTICE). OurTaiko is the author and maintainer
+of this modified version. Release packages include both files.
 
 ## Acknowledgments
 

@@ -1,7 +1,7 @@
 #include "game.h"
+#include "../libs/fanmade.h"
 #include "../libs/scores.h"
 #include "../libs/input.h"
-#include "../libs/network.h"
 #include "../libs/script.h"
 #include "../libs/filesystem.h"
 #include <cmath>
@@ -14,6 +14,7 @@ void GameScreen::on_screen_start() {
     start_ms = 0;
     start_delay = 1000.0f;
     last_resync_ms = 0;
+    song_loading_delay_ms = 0;
     JudgePos::X = tex.skin_config[SC::JUDGE_POS].x;
     JudgePos::Y = tex.skin_config[SC::JUDGE_POS].y;
     song_started = false;
@@ -61,6 +62,8 @@ void GameScreen::on_screen_start() {
             start_ms += extra_delay;
         }
     }
+    song_loading_frame_ms = get_current_ms();
+    ms_from_start = song_loading_frame_ms - start_ms;
 }
 
 Screens GameScreen::on_screen_end(Screens next_screen) {
@@ -126,22 +129,23 @@ void GameScreen::init_tja(fs::path song) {
     players.push_back(std::make_unique<Player>(parser, global_data.player_num, global_data.session_data[(int)global_data.player_num].selected_difficulty, false, get_player_modifiers(global_data.player_num)));
 }
 
-void GameScreen::poll_pending_song() {
-    if (!pending_song_load.valid() ||
-        pending_song_load.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
-        return;
+bool GameScreen::poll_pending_song(double current_ms) {
+    if (!pending_song_load.valid()) return false;
+
+    // Decoding must finish before the chart and its opening transition advance.
+    // Include the completion frame so even a slow decoder starts at sample zero.
+    // The first frame's cached time can precede on_screen_start().
+    const double elapsed = std::max(0.0, current_ms - song_loading_frame_ms);
+    start_ms += elapsed;
+    song_loading_delay_ms += elapsed;
+    song_loading_frame_ms = std::max(current_ms, song_loading_frame_ms);
+    if (pending_song_load.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+        return true;
 
     std::string name = pending_song_load.get();
-    if (name.empty()) return;
-    song_music = name;
-
-    if (song_started && !paused) {
-        audio.play_sound(*song_music, VolumePreset::MUSIC);
-        double audio_ms = ms_from_start
-                        - (parser->metadata.offset * 1000 + start_delay
-                           - (double)global_data.config->general.audio_offset);
-        audio.seek_sound(*song_music, (float)std::max(0.0, audio_ms / 1000.0));
-    }
+    if (!name.empty()) song_music = name;
+    clear_input_buffers();
+    return false;
 }
 
 void GameScreen::start_song(double ms_from_start) {
@@ -204,7 +208,7 @@ std::optional<Screens> GameScreen::global_keys() {
     }
 
     if (
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
         check_key_pressed(global_data.config->keys.pause_key)
 #else
         ray::IsKeyPressed(global_data.config->keys.pause_key)
@@ -274,9 +278,17 @@ void GameScreen::save_score(int player_id, PlayerNum player_num) {
     int64_t played_at = unix_now();
     std::string modifiers_json = modifiers_to_json(players[0]->get_modifiers());
     scores_manager.save_score(hash, session_data.selected_difficulty, player_id, score, played_at, modifiers_json);
-    PlayerData pd = scores_manager.get_player_data(player_id).value_or(PlayerData{});
-    if (global_data.config->general.score_method != ScoreMethod::GEN3) {
-        network.submit_score(hash, session_data.selected_difficulty, global_data.config->network.access_code, score, players[0]->input_log, played_at, modifiers_json, pd.chara_is_costume, pd.chara_cos_index);
+    auto score_player = std::find_if(players.begin(), players.end(), [player_num](const auto& p) {
+        return p && p->player_num == player_num;
+    });
+    if (score_player == players.end()) return;
+    const auto mods = (*score_player)->get_modifiers();
+    if (!run_skipped && !mods.auto_play && !mods.skip &&
+        (players.size() == 1 || player_num == global_data.first_login_player)) {
+        fanmade::Score cloud;
+        cloud.good=score.good; cloud.ok=score.ok; cloud.bad=score.bad;
+        cloud.score=score.score; cloud.drumroll=score.drumroll; cloud.max_combo=score.max_combo;
+        fanmade::client().submit(session_data.selected_song, session_data.selected_difficulty, cloud);
     }
 }
 
@@ -453,11 +465,12 @@ std::optional<Screens> GameScreen::update() {
 
     double current_ms = get_frame_ms();
     allnet_indicator.update(current_ms);
+    const bool loading_song = poll_pending_song(current_ms);
+    transition->update(current_ms - song_loading_delay_ms);
+    if (loading_song) return std::nullopt;
     if (!paused)
         ms_from_start = current_ms - start_ms;
 
-    transition->update(current_ms);
-    poll_pending_song();
     if (transition->is_finished()) {
         start_song(ms_from_start);
         global_data.input_locked = 0;

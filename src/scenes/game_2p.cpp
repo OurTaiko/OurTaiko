@@ -50,7 +50,6 @@ std::optional<Screens> Game2PScreen::update() {
     if (!paused) {
         ms_from_start = current_time - start_ms;
     }
-    poll_pending_song();
     if (transition->is_finished()) {
         start_song(ms_from_start);
         global_data.input_locked = 0;
@@ -107,7 +106,7 @@ std::optional<Screens> Game2PScreen::update() {
         return on_screen_end(Screens::SONG_SELECT_2P);
     }
     if (
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
         check_key_pressed(global_data.config->keys.pause_key)
 #else
         ray::IsKeyPressed(global_data.config->keys.pause_key)

@@ -1,6 +1,8 @@
 #include "transition.h"
 #include "../../libs/global_data.h"
 #include <algorithm>
+#include <cmath>
+#include "../../libs/fanmade.h"
 
 Transition::Transition(const std::string& title, const std::string& subtitle, bool is_second) :
     is_second(is_second) {
@@ -11,6 +13,7 @@ Transition::Transition(const std::string& title, const std::string& subtitle, bo
     song_info_fade_out = (FadeAnimation*)global_tex.get_animation(4);
 
     this->title = std::make_unique<OutlinedText>(title, global_tex.skin_config[SC::TRANSITION_TITLE].font_size, ray::WHITE, ray::BLACK, false, 5);
+    download_title = title;
     this->subtitle = std::make_unique<OutlinedText>(subtitle, global_tex.skin_config[SC::TRANSITION_SUBTITLE].font_size, ray::WHITE, ray::BLACK, false, 5);
 
     if (!load("SongTransition", "transition", title, subtitle, is_second)) return;
@@ -20,6 +23,7 @@ Transition::Transition(const std::string& title, const std::string& subtitle, bo
 }
 
 Transition::~Transition() {
+    *cancel_remote = true;
     if (loading_graphic.has_value()) {
         ray::UnloadTexture(loading_graphic.value());
     }
@@ -67,6 +71,19 @@ void Transition::draw_dan(float /*total_offset*/) {
 }
 
 void Transition::start() {
+    if (!is_second) {
+        auto pn = global_data.player_num == PlayerNum::TWO_PLAYER ? PlayerNum::P1 : global_data.player_num;
+        if (remote_players.empty()) remote_players.push_back((int)pn);
+        remote_source = global_data.session_data[remote_players.front()].selected_song;
+        if (fanmade::client().chart(remote_source)) {
+            remote_download = std::async(std::launch::async, [source=remote_source, cancel=cancel_remote, state=download_state] {
+                return fanmade::client().prepare(source, cancel, [state](const fanmade::DownloadProgress& progress) {
+                    std::lock_guard lock(state->mutex);
+                    state->progress = progress;
+                });
+            });
+        }
+    }
     dan_start_ms = get_current_ms();
     rainbow_up->start();
     mini_up->start();
@@ -76,6 +93,25 @@ void Transition::start() {
 }
 
 void Transition::update(double current_ms) {
+    if (remote_download.valid() && remote_download.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+        try {
+            auto path = remote_download.get();
+            auto chart = fanmade::client().chart(path);
+            for (int pn : remote_players) {
+                const auto& session = global_data.session_data[pn];
+                if (session.selected_song != remote_source) continue;
+                int diff = session.selected_difficulty;
+                if (!chart || diff < 0 || diff >= 5 || !chart->difficulties[diff])
+                    throw std::runtime_error("DIFFICULTY_REMOVED_BY_AUTHOR");
+            }
+            for (int pn : remote_players) {
+                auto& session = global_data.session_data[pn];
+                if (session.selected_song != remote_source) continue;
+                session.selected_song = path;
+                session.song_hash = "fanmade:" + chart->server + ":" + chart->id + ":" + chart->version + ":" + std::to_string(session.selected_difficulty);
+            }
+        } catch (const std::exception& e) { download_error = e.what(); }
+    }
     call(fn_update, "SongTransition:update", current_ms,
          (double)rainbow_up->attribute, (double)song_info_fade->attribute);
     rainbow_up->update(current_ms);
@@ -86,7 +122,7 @@ void Transition::update(double current_ms) {
 }
 
 bool Transition::is_finished() {
-    return song_info_fade->is_finished;
+    return song_info_fade->is_finished && !remote_download.valid() && download_error.empty();
 }
 
 void Transition::draw_song_info() {
@@ -124,7 +160,91 @@ void Transition::draw_default(float total_offset) {
     global_tex.draw_texture(RAINBOW_TRANSITION::CHARA_CENTER, {.y=(float)-rainbow_up->attribute + offset - total_offset});
 }
 
+void Transition::draw_download() {
+    using File = fanmade::FileProgress;
+    using Stage = fanmade::DownloadProgress::Stage;
+    fanmade::DownloadProgress progress;
+    { std::lock_guard lock(download_state->mutex); progress = download_state->progress; }
+    const bool zh = global_data.config->general.language.rfind("zh", 0) == 0;
+    const auto label = [zh](const char* en, const char* cn) { return std::string(zh ? cn : en); };
+    const auto size_text = [](uint64_t bytes) {
+        if (bytes >= 1024 * 1024) return fmt::format("{:.1f} MB", bytes / (1024.0 * 1024.0));
+        if (bytes >= 1024) return fmt::format("{:.1f} KB", bytes / 1024.0);
+        return fmt::format("{} B", bytes);
+    };
+    const auto detail = [&](const File& file) {
+        switch (file.state) {
+            case File::State::Waiting: return label("Waiting", "等待下载");
+            case File::State::Cached: return label("Cached", "已缓存") + "  ·  " + size_text(file.total);
+            case File::State::Complete: return label("Complete", "已完成") + "  ·  " + size_text(file.total);
+            case File::State::Verifying: return label("Verifying", "校验中");
+            case File::State::Downloading:
+                if (!file.total) return size_text(file.received) + "  ·  " + label("Downloading", "下载中");
+                return fmt::format("{}%  ·  {} / {}", static_cast<int>(100.0 * std::min(file.received, file.total) / file.total),
+                                   size_text(file.received), size_text(file.total));
+        }
+        return std::string{};
+    };
+    const std::string heading = !download_error.empty() ? label("Download failed", "下载失败")
+                              : *cancel_remote ? label("Cancelling download…", "正在取消下载…")
+                              : label("Preparing song", "正在准备歌曲");
+    std::string footer = label("Back: cancel download", "返回：取消下载");
+    if (!download_error.empty()) footer = download_error + "  ·  " + label("Back: return", "返回：回到选曲");
+    else if (progress.stage == Stage::Checking) footer = label("Checking song details…", "正在获取歌曲信息…") + "  ·  " + footer;
+    else if (progress.stage == Stage::Preparing) footer = label("Preparing chart…", "正在准备谱面…");
+    else if (progress.stage == Stage::Ready) footer = label("Ready", "准备完成");
+    const std::string chart_label = label("Chart", "谱面");
+    const std::string audio_label = label("Song audio", "歌曲音频");
+    const std::string chart_detail = detail(progress.chart), audio_detail = detail(progress.audio);
+
+    const float scale = global_tex.screen_width / 1280.0f;
+    const float width = std::min(900.0f * scale, global_tex.screen_width - 80.0f * scale);
+    const float height = 350.0f * scale;
+    const float x = (global_tex.screen_width - width) / 2.0f;
+    // Keep the file progress above the global touch drum at the bottom.
+    const float y = 40.0f * scale;
+    const float inset = 36 * scale, content_width = width - 2 * inset;
+    const ray::Color background{12, 17, 28, 255}, panel{25, 33, 49, 255};
+    const ray::Color muted{166, 181, 202, 255}, accent{93, 211, 199, 255};
+    ray::DrawRectangle(0, 0, global_tex.screen_width, global_tex.screen_height, background);
+    ray::DrawRectangleRec({x, y, width, height}, panel);
+
+    // Request all glyphs together before drawing so an atlas rebuild cannot
+    // invalidate a font already in use. Numeric progress uses cached glyphs.
+    const int font_size = std::max(16, static_cast<int>(24 * scale));
+    auto font = font_manager.get_font(heading + download_title + footer + chart_label + audio_label
+                                    + chart_detail + audio_detail + "0123456789.% /BKM·", font_size);
+    auto draw_text = [&](const std::string& text, float tx, float ty, float size, ray::Color color, bool right = false) {
+        float measured = ray::MeasureTextEx(font, text.c_str(), size, scale).x;
+        if (measured > content_width) { size *= content_width / measured; measured = content_width; }
+        ray::DrawTextEx(font, text.c_str(), {tx - (right ? measured : 0), ty}, size, scale, color);
+    };
+    draw_text(heading, x + inset, y + 28 * scale, 32 * scale, ray::WHITE);
+    draw_text(download_title, x + inset, y + 78 * scale, 24 * scale, muted);
+    auto row = [&](const std::string& name, const std::string& text, const File& file, float top) {
+        draw_text(name, x + inset, top, 24 * scale, ray::WHITE);
+        draw_text(text, x + width - inset, top + 2 * scale, 20 * scale, muted, true);
+        const float bar_y = top + 40 * scale, bar_height = 8 * scale;
+        ray::DrawRectangleRec({x + inset, bar_y, content_width, bar_height}, {49, 62, 82, 255});
+        if (file.state == File::State::Waiting) return;
+        if (file.state == File::State::Downloading && !file.total) {
+            float position = static_cast<float>(std::fmod(get_current_ms() / 1200.0, 1.0));
+            ray::DrawRectangleRec({x + inset + position * content_width * 0.75f, bar_y, content_width * 0.25f, bar_height}, accent);
+        } else {
+            float fraction = file.total ? static_cast<float>(std::min(file.received, file.total)) / file.total : 1.0f;
+            ray::DrawRectangleRec({x + inset, bar_y, content_width * fraction, bar_height}, accent);
+        }
+    };
+    row(chart_label, chart_detail, progress.chart, y + 125 * scale);
+    row(audio_label, audio_detail, progress.audio, y + 210 * scale);
+    draw_text(footer, x + inset, y + 297 * scale, 20 * scale, muted);
+}
+
 void Transition::draw() {
+    if (remote_download.valid() || !download_error.empty()) {
+        draw_download();
+        return;
+    }
     float total_offset = 0;
     if (is_second) total_offset = global_tex.skin_config[SC::TRANSITION_OFFSET].y;
     if (dan_color >= 0) {

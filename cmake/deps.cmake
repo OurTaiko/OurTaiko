@@ -419,18 +419,18 @@ else()
 endif()
 
 # Prebuilt OpenSSL for Android -- needed by libgit2 (always, on Android) and
-# by cpr/curl when NETWORK_ENABLED. Set up once, shared by both.
+# by cpr/curl when FANMADE_NETWORK. Set up once, shared by both.
 if(ANDROID AND NOT EMSCRIPTEN)
   set(ANDROID_OPENSSL_PREFIX "" CACHE PATH "Prebuilt OpenSSL for Android (include/ + lib/), see tools/build_openssl_android.sh")
   if(NOT ANDROID_OPENSSL_PREFIX)
-    message(FATAL_ERROR "Android builds require -DANDROID_OPENSSL_PREFIX=<path> (used by libgit2, and by cpr/curl when NETWORK_ENABLED). Run tools/build_openssl_android.sh first.")
+    message(FATAL_ERROR "Android builds require -DANDROID_OPENSSL_PREFIX=<path> (used by libgit2, and by cpr/curl when FANMADE_NETWORK). Run tools/build_openssl_android.sh first.")
   endif()
   set(OPENSSL_ROOT_DIR "${ANDROID_OPENSSL_PREFIX}" CACHE PATH "" FORCE)
   set(OPENSSL_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)
   list(APPEND CMAKE_FIND_ROOT_PATH "${ANDROID_OPENSSL_PREFIX}")
 endif()
 
-if(NETWORK_ENABLED)
+if(FANMADE_NETWORK)
   if(IOS)
     # Build CPR's pinned curl for the selected iOS SDK. Secure Transport uses
     # Apple's system trust store; do not discover host OpenSSL or CA file paths.
@@ -459,6 +459,13 @@ if(NETWORK_ENABLED)
     set(CURL_USE_LIBSSH2 OFF CACHE BOOL "" FORCE)
   endif()
   if(ANDROID)
+    set(CPR_USE_SYSTEM_CURL OFF CACHE BOOL "" FORCE)
+    set(CPR_ENABLE_SSL ON CACHE BOOL "" FORCE)
+    set(CPR_FORCE_OPENSSL_BACKEND ON CACHE BOOL "" FORCE)
+    # fanmade supplies the APK's CA bundle with CURLOPT_CAINFO_BLOB. Never
+    # bake a build machine's certificate paths into the Android library.
+    set(CPR_SKIP_CA_BUNDLE_SEARCH ON CACHE BOOL "" FORCE)
+    set(CURL_CA_BUNDLE "none" CACHE STRING "" FORCE)
     set(CURL_USE_OPENSSL ON CACHE BOOL "" FORCE)
     set(USE_LIBIDN2 OFF CACHE BOOL "" FORCE)
     set(USE_NGHTTP2 OFF CACHE BOOL "" FORCE)

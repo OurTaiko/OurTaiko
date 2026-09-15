@@ -2,19 +2,23 @@ plugins {
     id 'com.android.application'
 }
 
+apply from: 'game-assets.gradle'
+
 def keystoreProps = new Properties()
 def keystoreFile = rootProject.file('keystore.properties')
 if (keystoreFile.exists()) {
     keystoreFile.withInputStream { keystoreProps.load(it) }
 }
+def ciDebugSigning = providers.gradleProperty('OurTaikoCiDebugSigning').orNull == 'true'
+def ciReleaseSigning = !!System.getenv('ANDROID_KEYSTORE_PASSWORD')
 
 android {
-    namespace 'com.yataidon.app'
+    namespace 'org.ourtaiko.fanmade'
     compileSdk 35
     ndkVersion '27.3.13750724'
 
     defaultConfig {
-        applicationId 'com.yataidon.app'
+        applicationId 'org.ourtaiko.fanmade'
         minSdk 29
         targetSdk 35
         versionCode 1
@@ -30,9 +34,7 @@ android {
                     "-DANDROID_FFMPEG_PREFIX=${rootProject.file('../.android-ffmpeg').absolutePath}",
                     "-DANDROID_OPENSSL_PREFIX=${rootProject.file('../.android-openssl').absolutePath}",
                     "-DANDROID_STL=c++_shared",
-                    "-DANDROID_PLATFORM=android-29",
-                    "-DNETWORK_URL=${System.getenv('NETWORK_URL') ?: ''}",
-                    "-DNETWORK_AUTH_KEY=${System.getenv('NETWORK_AUTH_KEY') ?: ''}"
+                    "-DANDROID_PLATFORM=android-29"
                 )
             }
         }
@@ -45,25 +47,25 @@ android {
         }
     }
 
-    // Copy shader/es/ from repo root into APK assets as shader/es/
-    def shaderSrcDir = rootProject.file('../shader/es')
-    def shaderOutDir = layout.buildDirectory.dir('generated/shader_assets/shader/es')
-
-    task copyShaderAssets(type: Copy) {
-        from shaderSrcDir
-        into shaderOutDir
-    }
-
     sourceSets {
         main {
             assets.srcDirs = [
                 'src/main/assets',
-                layout.buildDirectory.dir('generated/shader_assets').get()
+                layout.buildDirectory.dir('generated/game_assets').get()
             ]
         }
     }
 
-    preBuild.dependsOn copyShaderAssets
+    // GameData.zip is already compressed; stream it directly from the APK.
+    androidResources { noCompress += ['zip'] }
+
+    preBuild.dependsOn 'copyGameAssets'
+
+    applicationVariants.all { variant ->
+        variant.outputs.all {
+            outputFileName = variant.name == 'release' ? 'OurTaiko-Android.apk' : "OurTaiko-Android-${variant.name}.apk"
+        }
+    }
 
     lint {
         abortOnError false
@@ -77,7 +79,12 @@ android {
 
     signingConfigs {
         release {
-            if (keystoreProps['storeFile']) {
+            if (ciReleaseSigning) {
+                storeFile rootProject.file('ourtaiko-release.jks')
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            } else if (keystoreProps['storeFile']) {
                 storeFile rootProject.file(keystoreProps['storeFile'])
                 storePassword keystoreProps['storePassword']
                 keyAlias keystoreProps['keyAlias']
@@ -89,7 +96,7 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            signingConfig ciDebugSigning ? signingConfigs.debug : signingConfigs.release
         }
         debug {
             jniDebuggable true

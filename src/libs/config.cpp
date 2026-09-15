@@ -1,6 +1,9 @@
 #include "config.h"
 #include "ray.h"
 #include <algorithm>
+#ifdef OURTAIKO_PLATFORM_IOS
+#include "../platform/ios_network_settings.h"
+#endif
 
 std::string getKeyString(int key_code) {
     // Handle alphanumeric keys
@@ -156,9 +159,8 @@ static int getKeyCode(const std::string& key) {
 static std::vector<int> parseKeyArray(const toml::array& arr) {
     std::vector<int> result;
     for (const auto& elem : arr) {
-        if (elem.is_string()) {
-            result.push_back(getKeyCode(elem.as_string()->get()));
-        }
+        if (!elem.is_string()) throw std::runtime_error("Expected a key name");
+        result.push_back(getKeyCode(elem.as_string()->get()));
     }
     return result;
 }
@@ -166,9 +168,9 @@ static std::vector<int> parseKeyArray(const toml::array& arr) {
 std::vector<int> parseIntArray(const toml::array& arr) {
     std::vector<int> result;
     for (const auto& elem : arr) {
-        if (auto val = elem.as_integer()) {
-            result.push_back(static_cast<int>(val->get()));
-        }
+        auto val = elem.value<int>();
+        if (!val) throw std::runtime_error("Expected an integer in settings array");
+        result.push_back(*val);
     }
     return result;
 }
@@ -176,25 +178,139 @@ std::vector<int> parseIntArray(const toml::array& arr) {
 static std::vector<fs::path> parsePathArray(const toml::array& arr) {
     std::vector<fs::path> result;
     for (const auto& elem : arr) {
-        if (elem.is_string()) {
-            result.push_back(fs::path(elem.as_string()->get()));
+        if (!elem.is_string()) throw std::runtime_error("Expected a song path");
+        result.push_back(fs::path(elem.as_string()->get()));
+    }
+    return result;
+}
+
+static std::vector<fanmade::ServerConfig> parse_network_servers(const toml::table& config_file) {
+    std::vector<fanmade::ServerConfig> result;
+    if (auto servers = config_file["network"]["servers"].as_array()) {
+        for (const auto& node : *servers) {
+            if (!node.is_table()) throw std::runtime_error("Expected a server table");
+            auto& v = *node.as_table();
+            for (const auto* key : {"name", "base_url", "username", "password", "http_proxy"}) {
+                if (v[key] && !v[key].is_string())
+                    throw std::runtime_error("Expected a server string");
+            }
+            result.push_back({v["name"].value_or("OurTaiko Fanmade"),
+                v["base_url"].value_or("http://127.0.0.1:8080"),
+                v["username"].value_or(""), v["password"].value_or(""),
+                v["http_proxy"].value_or("")});
         }
     }
     return result;
 }
 
-Config get_config() {
-    fs::path config_path = fs::exists("dev-config.toml") ?
-                            fs::path("dev-config.toml") :
-                            fs::path("config.toml");
+// Defaults are also the schema for known settings. Missing keys are allowed;
+// present values with the wrong type invalidate the whole file.
+static toml::table default_settings() {
+    auto defaults = toml::parse(R"toml(
+[audio]
+asio_channel = [ 0 ]
+buffer_size = 128
+device_type = 0
+sample_rate = 44100
 
-    toml::table config_file;
-    try {
-        config_file = toml::parse_file(config_path.string());
-    } catch (const toml::parse_error& err) {
-        spdlog::error("Failed to parse {}: {} -- using defaults", config_path.string(), err.what());
+[gamepad_1p]
+left_don = [ 16 ]
+left_kat = [ 10 ]
+right_don = [ 17 ]
+right_kat = [ 12 ]
+
+[gamepad_2p]
+left_don = []
+left_kat = []
+right_don = []
+right_kat = []
+
+[general]
+audio_offset = 0
+fps_counter = false
+judge_counter = false
+language = 'en'
+log_level = 'info'
+player_1_id = 1
+player_2_id = 2
+practice_mode_bar_delay = 1
+score_method = 'shinuchi'
+song_limit = 0
+song_timer = false
+timer_frozen = true
+touch_input = false
+visual_offset = 0
+webcam_number = -1
+
+[network]
+servers = [] # Native Fanmade servers; see docs/FANMADE.md
+
+[keys]
+back_key = 'escape'
+borderless_key = 'f10'
+exit_key = 'Q'
+fullscreen_key = 'f11'
+pause_key = 'space'
+restart_key = 'f1'
+
+[keys_1p]
+left_don = [ 'F' ]
+left_kat = [ 'D' ]
+right_don = [ 'J' ]
+right_kat = [ 'K' ]
+
+[keys_2p]
+left_don = [ 'X' ]
+left_kat = [ 'Z' ]
+right_don = [ 'C' ]
+right_kat = [ 'V' ]
+
+[paths]
+skin = 'PyTaikoGreen'
+tja_path = [ 'Songs' ]
+
+[video]
+borderless = false
+fullscreen = false
+target_fps = -1
+vsync = false
+
+[volume]
+attract_mode = 1.0
+hitsound = 1.0
+music = 0.8
+sound = 1.0
+voice = 1.0
+
+)toml");
+    defaults["general"].as_table()->insert("display_bpm", false);
+#if defined(PLATFORM_ANDROID) || defined(OURTAIKO_PLATFORM_IOS)
+    defaults["general"].as_table()->insert_or_assign("touch_input", true);
+    defaults["video"].as_table()->insert_or_assign("vsync", true);
+#endif
+    return defaults;
+}
+
+static void merge_settings(toml::table& settings, const toml::table& defaults) {
+    for (const auto& [key, fallback] : defaults) {
+        auto* value = settings.get(key);
+        if (!value) {
+            settings.insert(key, fallback);
+        } else if (value->is_table() && fallback.is_table()) {
+            merge_settings(*value->as_table(), *fallback.as_table());
+        } else if (value->type() != fallback.type()
+                   && !(fallback.is_floating_point() && value->is_integer())) {
+            throw std::runtime_error("Wrong setting type: " + std::string(key.str()));
+        }
     }
+}
 
+static const toml::array* setting_array(toml::node_view<const toml::node> node) {
+    if (node && !node.is_array()) throw std::runtime_error("Expected a settings array");
+    return node.as_array();
+}
+
+static Config parse_config(const toml::table& config_file) {
     Config config{};
 
     config.general.fps_counter = config_file["general"]["fps_counter"].value_or(false);
@@ -214,15 +330,10 @@ Config get_config() {
     config.general.player_2_id = config_file["general"]["player_2_id"].value_or(1);
     config.general.touch_input = config_file["general"]["touch_input"].value_or(false);
 
-    config.network.access_code = config_file["network"]["access_code"].value_or(
-        config_file["general"]["access_code"].value_or(""));
-    config.network.online_play = config_file["network"]["online_play"].value_or(
-        config_file["general"]["online_play"].value_or(false));
-    config.network.sync_scores = config_file["network"]["sync_scores"].value_or(
-        config_file["general"]["sync_scores_on_launch"].value_or(false));
+    config.network.servers = parse_network_servers(config_file);
 
     // Parse paths
-    if (auto tja_path = config_file["paths"]["tja_path"].as_array()) {
+    if (auto tja_path = setting_array(config_file["paths"]["tja_path"])) {
         config.paths.tja_path = parsePathArray(*tja_path);
     }
     config.paths.skin = fs::path(config_file["paths"]["skin"].value_or("PyTaikoGreen"));
@@ -236,30 +347,30 @@ Config get_config() {
     config.keys.restart_key = getKeyCode(config_file["keys"]["restart_key"].value_or("r"));
 
     // Parse keys_1p
-    if (auto left_kat = config_file["keys_1p"]["left_kat"].as_array()) {
+    if (auto left_kat = setting_array(config_file["keys_1p"]["left_kat"])) {
         config.keys_1p.left_kat = parseKeyArray(*left_kat);
     }
-    if (auto left_don = config_file["keys_1p"]["left_don"].as_array()) {
+    if (auto left_don = setting_array(config_file["keys_1p"]["left_don"])) {
         config.keys_1p.left_don = parseKeyArray(*left_don);
     }
-    if (auto right_don = config_file["keys_1p"]["right_don"].as_array()) {
+    if (auto right_don = setting_array(config_file["keys_1p"]["right_don"])) {
         config.keys_1p.right_don = parseKeyArray(*right_don);
     }
-    if (auto right_kat = config_file["keys_1p"]["right_kat"].as_array()) {
+    if (auto right_kat = setting_array(config_file["keys_1p"]["right_kat"])) {
         config.keys_1p.right_kat = parseKeyArray(*right_kat);
     }
 
     // Parse keys_2p
-    if (auto left_kat = config_file["keys_2p"]["left_kat"].as_array()) {
+    if (auto left_kat = setting_array(config_file["keys_2p"]["left_kat"])) {
         config.keys_2p.left_kat = parseKeyArray(*left_kat);
     }
-    if (auto left_don = config_file["keys_2p"]["left_don"].as_array()) {
+    if (auto left_don = setting_array(config_file["keys_2p"]["left_don"])) {
         config.keys_2p.left_don = parseKeyArray(*left_don);
     }
-    if (auto right_don = config_file["keys_2p"]["right_don"].as_array()) {
+    if (auto right_don = setting_array(config_file["keys_2p"]["right_don"])) {
         config.keys_2p.right_don = parseKeyArray(*right_don);
     }
-    if (auto right_kat = config_file["keys_2p"]["right_kat"].as_array()) {
+    if (auto right_kat = setting_array(config_file["keys_2p"]["right_kat"])) {
         config.keys_2p.right_kat = parseKeyArray(*right_kat);
     }
 
@@ -279,20 +390,20 @@ Config get_config() {
     }
 
     // Parse gamepad_2p
-    if (auto left_kat = config_file["gamepad_2p"]["left_kat"].as_array())
+    if (auto left_kat = setting_array(config_file["gamepad_2p"]["left_kat"]))
         config.gamepad_2p.left_kat = parseIntArray(*left_kat);
-    if (auto left_don = config_file["gamepad_2p"]["left_don"].as_array())
+    if (auto left_don = setting_array(config_file["gamepad_2p"]["left_don"]))
         config.gamepad_2p.left_don = parseIntArray(*left_don);
-    if (auto right_don = config_file["gamepad_2p"]["right_don"].as_array())
+    if (auto right_don = setting_array(config_file["gamepad_2p"]["right_don"]))
         config.gamepad_2p.right_don = parseIntArray(*right_don);
-    if (auto right_kat = config_file["gamepad_2p"]["right_kat"].as_array())
+    if (auto right_kat = setting_array(config_file["gamepad_2p"]["right_kat"]))
         config.gamepad_2p.right_kat = parseIntArray(*right_kat);
 
     // Parse audio
     config.audio.device_type = config_file["audio"]["device_type"].value_or(0);
     config.audio.sample_rate = config_file["audio"]["sample_rate"].value_or(44100);
     config.audio.buffer_size = config_file["audio"]["buffer_size"].value_or(512);
-    if (auto asio_channel = config_file["audio"]["asio_channel"].as_array())
+    if (auto asio_channel = setting_array(config_file["audio"]["asio_channel"]))
         config.audio.asio_channel = parseIntArray(*asio_channel);
     if (config.audio.asio_channel.empty())
         config.audio.asio_channel.push_back(0);
@@ -313,10 +424,7 @@ Config get_config() {
     return config;
 }
 
-void save_config(const Config& config) {
-    fs::path config_path = fs::exists("dev-config.toml") ?
-                            fs::path("dev-config.toml") :
-                            fs::path("config.toml");
+static void save_config_to(const Config& config, const fs::path& config_path) {
 
     toml::table config_table;
 
@@ -329,6 +437,7 @@ void save_config(const Config& config) {
         {"timer_frozen", config.general.timer_frozen},
         {"song_timer", config.general.song_timer},
         {"judge_counter", config.general.judge_counter},
+        {"display_bpm", config.general.display_bpm},
         {"log_level", config.general.log_level},
         {"practice_mode_bar_delay", config.general.practice_mode_bar_delay},
         {"score_method", config.general.score_method},
@@ -339,12 +448,17 @@ void save_config(const Config& config) {
         {"touch_input", config.general.touch_input}
     });
 
+#ifndef OURTAIKO_PLATFORM_IOS
+    toml::array servers;
+    for (const auto& server : config.network.servers) {
+        servers.push_back(toml::table{{"name", server.name}, {"base_url", server.base_url},
+            {"username", server.username}, {"password", server.password}, {"http_proxy", server.http_proxy}});
+    }
     // Network
     config_table.insert("network", toml::table{
-        {"access_code", config.network.access_code},
-        {"online_play", config.network.online_play},
-        {"sync_scores", config.network.sync_scores}
+        {"servers", std::move(servers)}
     });
+#endif
 
     // Paths
     toml::array tja_path_array;
@@ -456,7 +570,19 @@ void save_config(const Config& config) {
             spdlog::error("Failed to save config.toml");
             return;
         }
+#ifndef PLATFORM_ANDROID
+        // Restrict the file to its owner; non-iOS builds also store server passwords here.
+        std::error_code permission_error;
+        fs::permissions(tmp_path, fs::perms::owner_read | fs::perms::owner_write,
+                        fs::perm_options::replace, permission_error);
+        if (permission_error) {
+            spdlog::error("Failed to protect config file: {}", permission_error.message());
+            return;
+        }
+#endif
+        // Android's shared /sdcard storage does not support POSIX chmod.
         ofs << config_table;
+        ofs.flush();
         if (!ofs.good()) {
             spdlog::error("Failed to write config.toml");
             return;
@@ -469,3 +595,59 @@ void save_config(const Config& config) {
         spdlog::error("Failed to save config.toml: {}", ec.message());
     }
 };
+
+
+static fs::path settings_path() {
+    return fs::exists("dev-config.toml") ? "dev-config.toml" : "config.toml";
+}
+
+void save_config(const Config& config) {
+    save_config_to(config, settings_path());
+}
+
+Config get_config() {
+    const auto path = settings_path();
+    const auto defaults = default_settings();
+    Config config;
+    bool reset = !fs::exists(path);
+    try {
+        auto settings = reset ? defaults : toml::parse_file(path.string());
+        // Keep the legacy gamepad section usable when no 1P section exists.
+        if (!settings.contains("gamepad_1p") && settings.contains("gamepad"))
+            settings.insert("gamepad_1p", *settings.get("gamepad"));
+        merge_settings(settings, defaults);
+        config = parse_config(settings);
+    } catch (const std::exception&) {
+        // Do not log parser source excerpts: settings can contain passwords.
+        spdlog::error("Failed to parse {}; using all default settings", path.string());
+        config = parse_config(defaults);
+        reset = true;
+    }
+
+#ifdef OURTAIKO_PLATFORM_IOS
+    // System Settings is an independent store. Only migrate after the entire
+    // TOML has parsed successfully, so a bad key cannot import partial settings.
+    if (ios_network_settings_need_migration())
+        ios_initialize_network_settings(config.network.servers);
+    config.network.servers = ios_network_servers();
+#endif
+
+    if (reset) {
+        bool can_save = true;
+        if (fs::exists(path)) {
+            auto backup = path;
+            backup += ".bak";
+            while (fs::exists(backup)) backup += ".bak";
+            std::error_code error;
+            // Move the exact original aside before saving, also allowing the
+            // temporary-file rename to succeed on Windows (no replace there).
+            fs::rename(path, backup, error);
+            if (error) {
+                spdlog::error("Cannot back up {}; keeping the original file: {}", path.string(), error.message());
+                can_save = false;
+            }
+        }
+        if (can_save) save_config_to(config, path);
+    }
+    return config;
+}

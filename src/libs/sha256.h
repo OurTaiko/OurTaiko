@@ -108,34 +108,6 @@ inline std::array<uint8_t, 32> sha256(const std::string& data) {
     return Sha256::hash(data);
 }
 
-// HMAC-SHA256 per RFC 2104.
-inline std::array<uint8_t, 32> hmac_sha256(const std::string& key, const std::string& message) {
-    constexpr size_t block_size = 64;
-    std::array<uint8_t, block_size> key_block{};
-    if (key.size() > block_size) {
-        auto hashed = sha256(key);
-        std::copy(hashed.begin(), hashed.end(), key_block.begin());
-    } else {
-        std::copy(key.begin(), key.end(), key_block.begin());
-    }
-
-    std::array<uint8_t, block_size> ipad, opad;
-    for (size_t i = 0; i < block_size; ++i) {
-        ipad[i] = key_block[i] ^ 0x36;
-        opad[i] = key_block[i] ^ 0x5c;
-    }
-
-    Sha256 inner;
-    inner.update(ipad.data(), block_size);
-    inner.update(reinterpret_cast<const uint8_t*>(message.data()), message.size());
-    auto inner_hash = inner.finalize();
-
-    Sha256 outer;
-    outer.update(opad.data(), block_size);
-    outer.update(inner_hash.data(), inner_hash.size());
-    return outer.finalize();
-}
-
 inline std::string to_hex(const std::array<uint8_t, 32>& bytes) {
     static constexpr char hex_chars[] = "0123456789abcdef";
     std::string out(64, '0');

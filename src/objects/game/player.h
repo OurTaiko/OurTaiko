@@ -3,7 +3,7 @@
 #include "../../libs/screen.h"
 #include "../../libs/song_parser.h"
 #include "../../libs/text.h"
-#include "../../libs/network.h"
+#include "../../libs/scores.h"
 #include "../global/nameplate.h"
 #include "../global/chara_3d.h"
 #include "background.h"
@@ -41,6 +41,13 @@ namespace Timing {
     constexpr float OK_EASY = 108.441665649414f;
     constexpr float BAD_EASY = 125.125f;
 }
+
+enum class InputLogType {
+    KAT_L = 0,
+    DON_L = 1,
+    DON_R = 2,
+    KAT_R = 3
+};
 
 class Player {
 public:

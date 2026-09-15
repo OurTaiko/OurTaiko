@@ -1,14 +1,14 @@
 #!/bin/bash
-# Build YataiDON APK (release) and push to connected Android device via ADB.
+# Build OurTaiko APK (release) and push to connected Android device via ADB.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ANDROID_DIR="$SCRIPT_DIR/android"
 ADB="${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}/platform-tools/adb"
-APK="$ANDROID_DIR/app/build/outputs/apk/release/app-release.apk"
-PACKAGE="com.yataidon.app"
-ACTIVITY="com.yataidon.app.YataiDONActivity"
+APK="$ANDROID_DIR/app/build/outputs/apk/release/OurTaiko-Android.apk"
+PACKAGE="org.ourtaiko.fanmade"
+ACTIVITY="org.ourtaiko.fanmade.OurTaikoActivity"
 
 # --- Build ---
 echo "==> Building APK..."

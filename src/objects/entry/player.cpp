@@ -1,7 +1,6 @@
 #include "player.h"
 #include "../../libs/input.h"
 #include "../../libs/scores.h"
-#include "../../libs/network.h"
 #include "../../libs/global_data.h"
 #include <spdlog/spdlog.h>
 
@@ -144,12 +143,6 @@ void EntryPlayer::handle_input() {
                 scores_manager.save_player_data(*pd);
                 spdlog::info("costume_save: player_id={} is_costume={} head={} body={} cos={}",
                     pd->player_id, pd->chara_is_costume, pd->chara_head_index, pd->chara_body_index, pd->chara_cos_index);
-
-                const std::string& access_code = global_data.config->network.access_code;
-                if (pd->player_id == scores_manager.player_1 && !access_code.empty()) {
-                    network.update_costume(access_code, pd->chara_head_index, pd->chara_body_index,
-                                            pd->chara_cos_index, pd->chara_is_costume);
-                }
             }
             costume_menu.reset();
             chara_pick_stage = CostumePickStage::NONE;

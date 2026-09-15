@@ -4,8 +4,8 @@
 #include "../libs/filesystem.h"
 #include "../libs/global_data.h"
 #include "../libs/scores.h"
-#include "../libs/network.h"
 #include "../objects/song_select/file_navigator/navigator.h"
+#include "../objects/settings/settings_template.h"
 
 void save_config(const Config& config);
 
@@ -18,7 +18,9 @@ void SettingsScreen::on_screen_start() {
         tmpl_path = tex.parent_root() / "Graphics" / "settings_template.json";
 
     try {
-        box_manager = std::make_unique<SettingsBoxManager>(read_json_file(tmpl_path));
+        auto tmpl = read_json_file(tmpl_path);
+        remove_legacy_network_settings(tmpl);
+        box_manager = std::make_unique<SettingsBoxManager>(tmpl);
     } catch (const std::exception& e) {
         spdlog::error("Failed to load settings template: {}", e.what());
         screen_init = false;
@@ -27,7 +29,6 @@ void SettingsScreen::on_screen_start() {
     indicator   = Indicator(Indicator::State::SELECT);
     coin_overlay   = CoinOverlay();
     allnet_indicator = AllNetIcon();
-    username_on_entry = scores_manager.player_1_data.username;
 
     audio.play_sound("bgm", VolumePreset::MUSIC);
     screen_init = true;
@@ -38,11 +39,6 @@ Screens SettingsScreen::on_screen_end(Screens next_screen) {
     scores_manager.save_player_data(scores_manager.player_1_data);
     scores_manager.save_player_data(scores_manager.player_2_data);
     spdlog::info("Settings saved");
-
-    const std::string& access_code = global_data.config->network.access_code;
-    if (!access_code.empty() && scores_manager.player_1_data.username != username_on_entry) {
-        network.update_username(access_code, scores_manager.player_1_data.username);
-    }
 
     box_manager.reset();
 

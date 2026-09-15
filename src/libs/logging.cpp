@@ -11,7 +11,7 @@
 #endif
 #include <csignal>
 #include <exception>
-#if !defined(__ANDROID__) && !defined(PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(OURTAIKO_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
 #include <cpptrace/cpptrace.hpp>
 #endif
 
@@ -74,7 +74,7 @@ static LONG WINAPI crash_exception_filter(EXCEPTION_POINTERS* ep) {
 #endif
 
 static void log_stacktrace() {
-#if !defined(__ANDROID__) && !defined(PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
+#if !defined(__ANDROID__) && !defined(OURTAIKO_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
     try {
         std::ostringstream oss;
         cpptrace::generate_trace().print(oss, false);
@@ -132,7 +132,7 @@ void setup_logging(const std::string& log_level_str) {
         dup_filter->add_sink(file_sink);
 
 #ifdef __ANDROID__
-        auto android_sink = std::make_shared<spdlog::sinks::android_sink_mt>("YataiDON");
+        auto android_sink = std::make_shared<spdlog::sinks::android_sink_mt>("OurTaiko");
         std::vector<spdlog::sink_ptr> sinks {android_sink, dup_filter};
 #else
         std::vector<spdlog::sink_ptr> sinks {console_sink, dup_filter};

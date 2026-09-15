@@ -1,0 +1,48 @@
+name: Prepare skin dependencies
+description: Restore or fetch the pinned skin submodules used for code generation and packaging
+inputs:
+  gitea-user:
+    description: Optional username for private upstream skins
+    default: ''
+  gitea-token:
+    description: Optional read-only token for private upstream skins
+    default: ''
+  allow-insecure-tls:
+    description: Temporarily skip TLS verification only for the upstream skin host
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Read pinned skin revisions
+      id: revisions
+      shell: bash
+      run: |
+        key=$(git ls-tree HEAD -- Skins/PyTaikoGreen Skins/YataiDONRed Skins/YataiDONNijiiro | git hash-object --stdin)
+        echo "key=$key" >> "$GITHUB_OUTPUT"
+
+    - name: Restore skins
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          Skins/PyTaikoGreen
+          Skins/YataiDONRed
+          Skins/YataiDONNijiiro
+        key: skins-v2-${{ hashFiles('.gitmodules') }}-${{ steps.revisions.outputs.key }}
+
+    - name: Fetch skins
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GITEA_USER: ${{ inputs.gitea-user }}
+        GITEA_TOKEN: ${{ inputs.gitea-token }}
+        SKINS_ALLOW_INSECURE_TLS: ${{ inputs.allow-insecure-tls }}
+      run: bash "$GITHUB_ACTION_PATH/fetch.sh"
+
+    - name: Verify skin assets
+      shell: bash
+      run: |
+        test -s Skins/PyTaikoGreen/Graphics/skin_config.json
+        for skin in PyTaikoGreen YataiDONRed YataiDONNijiiro; do
+          test -d "Skins/$skin/Graphics"
+        done

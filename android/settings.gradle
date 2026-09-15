@@ -12,5 +12,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = 'YataiDON'
+rootProject.name = 'OurTaiko'
 include ':app'

@@ -1,0 +1,55 @@
+// Shared by the Android build and the standalone asset-packaging check.
+def gameAssetsDir = layout.buildDirectory.dir('generated/game_assets')
+def repositoryDir = rootProject.file('..')
+
+tasks.register('packGameData', Zip) {
+    destinationDirectory = gameAssetsDir
+    archiveFileName = 'GameData.zip'
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+    from(new File(repositoryDir, 'Skins')) {
+        into 'Skins'
+        exclude '**/.git', '**/.git/**', '**/.git*', '**/.DS_Store'
+    }
+    from(new File(repositoryDir, 'Songs')) {
+        into 'Songs'
+        exclude '**/.git', '**/.git/**', '**/.git*', '**/.DS_Store'
+    }
+    from(repositoryDir) {
+        include 'LICENSE', 'NOTICE'
+    }
+    from(new File(repositoryDir, 'config.toml')) {
+        filteringCharset = 'UTF-8'
+        filter { line ->
+            line.replaceAll(/^touch_input\s*=\s*false\s*$/, 'touch_input = true')
+                .replaceAll(/^vsync\s*=\s*false\s*$/, 'vsync = true')
+        }
+    }
+    outputs.file(gameAssetsDir.map { it.file('GameData.count') })
+    doLast {
+        def zip = new java.util.zip.ZipFile(archiveFile.get().asFile)
+        try {
+            def count = zip.entries().toList().count { !it.directory }
+            new File(gameAssetsDir.get().asFile, 'GameData.count').text = count.toString()
+        } finally {
+            zip.close()
+        }
+    }
+    doFirst {
+        ['PyTaikoGreen', 'YataiDONRed', 'YataiDONNijiiro'].each { skin ->
+            if (!new File(repositoryDir, "Skins/${skin}/Graphics/skin_config.json").isFile()) {
+                throw new GradleException("Missing ${skin} assets. Populate the skin submodules before building Android.")
+            }
+        }
+    }
+}
+
+// Keep directly loaded shader/license assets outside the archive. Clean only
+// the obsolete generated tree from the previous packaging layout.
+tasks.register('copyGameAssets', Sync) {
+    dependsOn 'packGameData'
+    into gameAssetsDir
+    from(new File(repositoryDir, 'shader/es')) { into 'shader/es' }
+    from(repositoryDir) { include 'LICENSE', 'NOTICE' }
+    preserve { include 'GameData.zip', 'GameData.count' }
+}

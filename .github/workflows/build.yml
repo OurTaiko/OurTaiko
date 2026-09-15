@@ -1,7 +1,15 @@
-name: Build YataiDON (Release)
+name: Build OurTaiko (Release)
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish a GitHub Release after all builds pass
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 jobs:
   build-linux:
@@ -9,35 +17,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> $GITHUB_OUTPUT
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
-
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install dependencies
         env:
@@ -91,64 +81,63 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DCMAKE_C_COMPILER=gcc \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         run: cmake --build build --config Release
 
       - name: Prepare release package
         run: |
-          mkdir -p release/YataiDON-Linux
-          cp build/bin/YataiDON release/YataiDON-Linux/
-          cp -r Skins release/YataiDON-Linux/
-          cp -r shader release/YataiDON-Linux/
-          cp -r Songs release/YataiDON-Linux/
-          cp config.toml release/YataiDON-Linux/
-          cp update.sh release/YataiDON-Linux/
-          chmod +x release/YataiDON-Linux/YataiDON release/YataiDON-Linux/update.sh
+          mkdir -p release/OurTaiko-Linux
+          cp build/bin/OurTaiko release/OurTaiko-Linux/
+          cp -r Skins release/OurTaiko-Linux/
+          cp -r shader release/OurTaiko-Linux/
+          cp -r Songs release/OurTaiko-Linux/
+          cp config.toml release/OurTaiko-Linux/
+          cp LICENSE NOTICE release/OurTaiko-Linux/
+          cp update.sh release/OurTaiko-Linux/
+          chmod +x release/OurTaiko-Linux/OurTaiko release/OurTaiko-Linux/update.sh
 
           # Bundle FFmpeg shared libraries into lib/
-          mkdir -p release/YataiDON-Linux/lib
-          ldd build/bin/YataiDON | grep -E "(libav|libsw).*=>" | awk '{print $3}' | \
-            xargs -I{} cp -L {} release/YataiDON-Linux/lib/
+          mkdir -p release/OurTaiko-Linux/lib
+          ldd build/bin/OurTaiko | grep -E "(libav|libsw).*=>" | awk '{print $3}' | \
+            xargs -I{} cp -L {} release/OurTaiko-Linux/lib/
 
           # Bundle sndfile codec dependencies (ogg, vorbis, FLAC, opus, mp3, etc.)
-          ldd build/bin/YataiDON | grep -E "(libsndfile|libogg|libvorbis|libFLAC|libopus|libmp3lame|libmpg123|libspeex).*=>" | awk '{print $3}' | \
-            grep -v "^$" | xargs -I{} cp -L {} release/YataiDON-Linux/lib/ 2>/dev/null || true
+          ldd build/bin/OurTaiko | grep -E "(libsndfile|libogg|libvorbis|libFLAC|libopus|libmp3lame|libmpg123|libspeex).*=>" | awk '{print $3}' | \
+            grep -v "^$" | xargs -I{} cp -L {} release/OurTaiko-Linux/lib/ 2>/dev/null || true
 
           # Bundle SDL3 shared library
-          ldd build/bin/YataiDON | grep -E "libSDL3.*=>" | awk '{print $3}' | \
-            grep -v "^$" | xargs -I{} cp -L {} release/YataiDON-Linux/lib/ 2>/dev/null || true
+          ldd build/bin/OurTaiko | grep -E "libSDL3.*=>" | awk '{print $3}' | \
+            grep -v "^$" | xargs -I{} cp -L {} release/OurTaiko-Linux/lib/ 2>/dev/null || true
 
           # Bundle transitive deps of FFmpeg AND sndfile codec libs
-          for so in release/YataiDON-Linux/lib/lib{av,sw,ogg,vorbis,FLAC,opus,mp3lame,mpg123,speex,SDL3}*.so*; do
+          for so in release/OurTaiko-Linux/lib/lib{av,sw,ogg,vorbis,FLAC,opus,mp3lame,mpg123,speex,SDL3}*.so*; do
             ldd "$so" 2>/dev/null | grep "=>" | awk '{print $3}' | grep -v "^$" | \
               grep -vE "lib(c\.so|m\.so|dl\.so|rt\.so|pthread\.so|gcc_s\.so|stdc\+\+\.so|X11\.so|GL\.so|asound\.so|pulse\.so|jack\.so|Xi\.so|Xrandr\.so|xcb)" | \
               grep -v "ld-linux" | \
-              xargs -I{} cp -L {} release/YataiDON-Linux/lib/ 2>/dev/null || true
+              xargs -I{} cp -L {} release/OurTaiko-Linux/lib/ 2>/dev/null || true
           done
 
           # Patch rpath: binary looks in $ORIGIN/lib, bundled .so files look in $ORIGIN
-          patchelf --set-rpath '$ORIGIN/lib' release/YataiDON-Linux/YataiDON
-          for so in release/YataiDON-Linux/lib/*.so*; do
+          patchelf --set-rpath '$ORIGIN/lib' release/OurTaiko-Linux/OurTaiko
+          for so in release/OurTaiko-Linux/lib/*.so*; do
             [ -f "$so" ] && patchelf --set-rpath '$ORIGIN' "$so" 2>/dev/null || true
           done
 
           # Checksums — binary + updater + shader + lib
           (
-            cd release/YataiDON-Linux
-            sha256sum YataiDON update.sh
+            cd release/OurTaiko-Linux
+            sha256sum OurTaiko update.sh LICENSE NOTICE
             find shader -type f | sort | xargs sha256sum
             [ -d lib ] && find lib -type f | sort | xargs sha256sum || true
-          ) > release/YataiDON-Linux/checksums-linux.sha256
+          ) > release/OurTaiko-Linux/checksums-linux.sha256
 
       - name: Upload Linux package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-Linux
-          path: release/YataiDON-Linux/
+          name: OurTaiko-Linux
+          path: release/OurTaiko-Linux/
           if-no-files-found: error
 
   build-windows:
@@ -160,38 +149,17 @@ jobs:
         shell: msys2 {0}
 
     steps:
-      - name: Configure Git credentials
-        shell: bash
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        shell: bash
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> $GITHUB_OUTPUT
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
-
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        shell: bash
-        run: git submodule update --init --recursive
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -217,9 +185,7 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DCMAKE_C_COMPILER=gcc \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         run: cmake --build build --config Release
@@ -227,28 +193,29 @@ jobs:
       - name: Prepare release package
         shell: bash
         run: |
-          mkdir -p release/YataiDON-Windows
-          cp build/bin/YataiDON.exe release/YataiDON-Windows/
-          cp build/bin/*.dll release/YataiDON-Windows/ 2>/dev/null || true
-          cp -r Skins release/YataiDON-Windows/
-          cp -r shader release/YataiDON-Windows/
-          cp -r Songs release/YataiDON-Windows/
-          cp config.toml release/YataiDON-Windows/
-          cp update.ps1 update.bat release/YataiDON-Windows/
+          mkdir -p release/OurTaiko-Windows
+          cp build/bin/OurTaiko.exe release/OurTaiko-Windows/
+          cp build/bin/*.dll release/OurTaiko-Windows/ 2>/dev/null || true
+          cp -r Skins release/OurTaiko-Windows/
+          cp -r shader release/OurTaiko-Windows/
+          cp -r Songs release/OurTaiko-Windows/
+          cp config.toml release/OurTaiko-Windows/
+          cp LICENSE NOTICE release/OurTaiko-Windows/
+          cp update.ps1 update.bat release/OurTaiko-Windows/
 
           # Checksums — binary + updater + dlls + shader
           (
-            cd release/YataiDON-Windows
-            sha256sum YataiDON.exe update.ps1 update.bat
+            cd release/OurTaiko-Windows
+            sha256sum OurTaiko.exe update.ps1 update.bat LICENSE NOTICE
             find shader -type f | sort | xargs sha256sum
             find . -maxdepth 1 -name "*.dll" | sort | xargs sha256sum
-          ) > release/YataiDON-Windows/checksums-windows.sha256
+          ) > release/OurTaiko-Windows/checksums-windows.sha256
 
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-Windows
-          path: release/YataiDON-Windows/
+          name: OurTaiko-Windows
+          path: release/OurTaiko-Windows/
           if-no-files-found: error
 
   build-macos:
@@ -256,36 +223,17 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global credential.helper ""
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> $GITHUB_OUTPUT
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
-
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install dependencies
         run: |
@@ -315,44 +263,43 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
-            -DCMAKE_EXE_LINKER_FLAGS="-L$(brew --prefix)/lib" \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_EXE_LINKER_FLAGS="-L$(brew --prefix)/lib"
 
       - name: Build
         run: cmake --build build --config Release
 
       - name: Prepare release package
         run: |
-          mkdir -p release/YataiDON-macOS
-          cp build/bin/YataiDON release/YataiDON-macOS/
-          cp -r Skins release/YataiDON-macOS/
-          cp -r shader release/YataiDON-macOS/
-          cp -r Songs release/YataiDON-macOS/
-          cp config.toml release/YataiDON-macOS/
-          cp update.sh release/YataiDON-macOS/
-          chmod +x release/YataiDON-macOS/YataiDON release/YataiDON-macOS/update.sh
+          mkdir -p release/OurTaiko-macOS
+          cp build/bin/OurTaiko release/OurTaiko-macOS/
+          cp -r Skins release/OurTaiko-macOS/
+          cp -r shader release/OurTaiko-macOS/
+          cp -r Songs release/OurTaiko-macOS/
+          cp config.toml release/OurTaiko-macOS/
+          cp LICENSE NOTICE release/OurTaiko-macOS/
+          cp update.sh release/OurTaiko-macOS/
+          chmod +x release/OurTaiko-macOS/OurTaiko release/OurTaiko-macOS/update.sh
 
           # Bundle non-system dylib dependencies
-          mkdir -p release/YataiDON-macOS/lib
+          mkdir -p release/OurTaiko-macOS/lib
           dylibbundler -od -b \
-            -x release/YataiDON-macOS/YataiDON \
-            -d release/YataiDON-macOS/lib \
+            -x release/OurTaiko-macOS/OurTaiko \
+            -d release/OurTaiko-macOS/lib \
             -p @executable_path/lib
 
           # Checksums — binary + updater + shader + lib
           (
-            cd release/YataiDON-macOS
-            shasum -a 256 YataiDON update.sh
+            cd release/OurTaiko-macOS
+            shasum -a 256 OurTaiko update.sh LICENSE NOTICE
             find shader -type f | sort | xargs shasum -a 256
             [ -d lib ] && find lib -type f | sort | xargs shasum -a 256 || true
-          ) > release/YataiDON-macOS/checksums-macos.sha256
+          ) > release/OurTaiko-macOS/checksums-macos.sha256
 
       - name: Upload macOS package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-macOS
-          path: release/YataiDON-macOS/
+          name: OurTaiko-macOS
+          path: release/OurTaiko-macOS/
           if-no-files-found: error
 
   build-android:
@@ -360,35 +307,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> $GITHUB_OUTPUT
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> $GITHUB_OUTPUT
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive
+      - name: Configure Android signing
+        id: signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          PUBLISH_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release }}
+        run: bash tools/configure_android_signing_ci.sh
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -400,7 +340,14 @@ jobs:
         run: |
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           yes | $SDKMANAGER --licenses >/dev/null 2>&1 || true
-          $SDKMANAGER "ndk;27.3.13750724" "cmake;3.22.1"
+          $SDKMANAGER "ndk;27.3.13750724" "cmake;3.22.1" "platforms;android-35" "build-tools;34.0.0"
+
+      - name: Check Android game data recovery
+        run: |
+          javac --release 11 -d "$RUNNER_TEMP/ourtaiko-android-tests" \
+            android/app/src/main/java/org/ourtaiko/fanmade/GameDataInstaller.java \
+            tests/android/GameDataInstallerTest.java
+          java -cp "$RUNNER_TEMP/ourtaiko-android-tests" org.ourtaiko.fanmade.GameDataInstallerTest
 
       - name: Cache FFmpeg for Android arm64
         id: cache-ffmpeg
@@ -432,30 +379,19 @@ jobs:
           echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
           echo "cmake.dir=$ANDROID_SDK_ROOT/cmake/3.22.1" >> android/local.properties
 
-      - name: Decode keystore
-        run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/yataidon-release.jks
-          printf 'storeFile=yataidon-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-            "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
-            "${{ secrets.ANDROID_KEY_ALIAS }}" \
-            "${{ secrets.ANDROID_KEY_PASSWORD }}" \
-            > android/keystore.properties
-
-      - name: Patch config for Android
-        run: sed -i 's/^touch_input = false/touch_input = true/' config.toml
-
       - name: Build Release APK
         working-directory: android
         env:
-          NETWORK_URL: ${{ secrets.NETWORK_URL }}
-          NETWORK_AUTH_KEY: ${{ secrets.NETWORK_AUTH_KEY }}
-        run: ./gradlew assembleRelease --no-daemon
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --no-daemon -POurTaikoCiDebugSigning=${{ steps.signing.outputs.debug_signing }}
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-Android
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: OurTaiko-Android
+          path: android/app/build/outputs/apk/release/OurTaiko-Android.apk
           if-no-files-found: error
 
   build-ios:
@@ -464,44 +400,22 @@ jobs:
     env:
       CONFIGURATION: Release
       IOS_DEPLOYMENT_TARGET: "16.3"
-      IOS_BUNDLE_IDENTIFIER: com.yataidon.app
+      IOS_BUNDLE_IDENTIFIER: org.ourtaiko.fanmade
       # build_ios.sh disables signing when no development team is supplied.
       IOS_DEVELOPMENT_TEAM: ""
 
     steps:
-      - name: Configure Git credentials
-        env:
-          GITEA_USER: ${{ secrets.GITEA_USER }}
-          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
-        run: |
-          git config --global credential.helper ""
-          git config --global url."https://${GITEA_USER}:${GITEA_TOKEN}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Get submodule hash
-        id: submod
-        run: |
-          echo "sha_ptg=$(git ls-tree HEAD Skins/PyTaikoGreen | awk '{print $3}')" >> "$GITHUB_OUTPUT"
-          echo "sha_red=$(git ls-tree HEAD Skins/YataiDONRed | awk '{print $3}')" >> "$GITHUB_OUTPUT"
-          echo "sha_nijiiro=$(git ls-tree HEAD Skins/YataiDONNijiiro | awk '{print $3}')" >> "$GITHUB_OUTPUT"
-
-      - name: Cache submodule
-        id: cache-submod
-        uses: actions/cache@v4
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
         with:
-          path: |
-            Skins/PyTaikoGreen
-            Skins/YataiDONRed
-            Skins/YataiDONNijiiro
-          key: submod-${{ steps.submod.outputs.sha_ptg }}-${{ steps.submod.outputs.sha_red }}-${{ steps.submod.outputs.sha_nijiiro }}
-
-      - name: Fetch submodule
-        if: steps.cache-submod.outputs.cache-hit != 'true'
-        run: git submodule update --init --recursive
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install build tools
         run: |
@@ -525,38 +439,33 @@ jobs:
           key: ios-ffmpeg-${{ runner.os }}-${{ runner.arch }}-iphoneos-arm64-${{ env.IOS_DEPLOYMENT_TARGET }}-${{ steps.toolchain.outputs.xcode }}-${{ hashFiles('tools/build_ffmpeg_ios.sh') }}
 
       - name: Build unsigned iOS app
-        env:
-          NETWORK_URL: ${{ secrets.NETWORK_URL }}
-          NETWORK_AUTH_KEY: ${{ secrets.NETWORK_AUTH_KEY }}
         run: |
-          ./build_ios.sh device \
-            -DNETWORK_URL="$NETWORK_URL" \
-            -DNETWORK_AUTH_KEY="$NETWORK_AUTH_KEY"
+          ./build_ios.sh device
 
       - name: Package unsigned IPA
         run: |
-          APP_PATH="$GITHUB_WORKSPACE/build-ios-device/bin/Release/YataiDON.app"
+          APP_PATH="$GITHUB_WORKSPACE/build-ios-device/bin/Release/OurTaiko.app"
           test -f "$APP_PATH/Info.plist"
-          test -x "$APP_PATH/YataiDON"
+          test -x "$APP_PATH/OurTaiko"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP_PATH/Info.plist")" = "iPhoneOS"
-          xcrun lipo -verify_arch arm64 "$APP_PATH/YataiDON"
+          xcrun lipo "$APP_PATH/OurTaiko" -verify_arch arm64
 
-          IPA_STAGE="$(mktemp -d "$RUNNER_TEMP/yataidon-ipa.XXXXXX")"
+          IPA_STAGE="$(mktemp -d "$RUNNER_TEMP/ourtaiko-ipa.XXXXXX")"
           trap 'rm -rf "$IPA_STAGE"' EXIT
           mkdir -p "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release"
-          ditto --norsrc "$APP_PATH" "$IPA_STAGE/Payload/YataiDON.app"
-          ditto -c -k --norsrc --keepParent "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release/YataiDON-iOS-unsigned.ipa"
+          ditto --norsrc "$APP_PATH" "$IPA_STAGE/Payload/OurTaiko.app"
+          ditto -c -k --norsrc --keepParent "$IPA_STAGE/Payload" "$GITHUB_WORKSPACE/release/OurTaiko-iOS-unsigned.ipa"
           (
             cd "$GITHUB_WORKSPACE/release"
-            shasum -a 256 YataiDON-iOS-unsigned.ipa > checksums-ios.sha256
+            shasum -a 256 OurTaiko-iOS-unsigned.ipa > checksums-ios.sha256
           )
 
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-iOS
+          name: OurTaiko-iOS
           path: |
-            release/YataiDON-iOS-unsigned.ipa
+            release/OurTaiko-iOS-unsigned.ipa
             release/checksums-ios.sha256
           compression-level: 0
           if-no-files-found: error
@@ -590,46 +499,48 @@ jobs:
   release:
     needs: [build-linux, build-windows, build-macos, build-android, build-ios]
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_release
+    permissions:
+      contents: write
     steps:
       - name: Download Linux artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-Linux
+          name: OurTaiko-Linux
           path: linux/
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-Windows
+          name: OurTaiko-Windows
           path: windows/
 
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-macOS
+          name: OurTaiko-macOS
           path: macos/
 
       - name: Download Android artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-Android
+          name: OurTaiko-Android
           path: android-out/
 
       - name: Download iOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: YataiDON-iOS
+          name: OurTaiko-iOS
           path: ios-out/
 
       - name: Package release assets
         run: |
           # Full zips for manual download
-          (cd linux   && zip -r ../YataiDON-Linux.zip .)
-          (cd windows && zip -r ../YataiDON-Windows.zip .)
-          (cd macos   && zip -r ../YataiDON-macOS.zip .)
-          cp android-out/app-release.apk YataiDON-Android.apk
-          cp ios-out/YataiDON-iOS-unsigned.ipa YataiDON-iOS-unsigned.ipa
+          (cd linux   && zip -r ../OurTaiko-Linux.zip .)
+          (cd windows && zip -r ../OurTaiko-Windows.zip .)
+          (cd macos   && zip -r ../OurTaiko-macOS.zip .)
+          cp android-out/OurTaiko-Android.apk OurTaiko-Android.apk
+          cp ios-out/OurTaiko-iOS-unsigned.ipa OurTaiko-iOS-unsigned.ipa
 
           # Metadata files
           cp linux/checksums-linux.sha256     ./checksums-linux.sha256
@@ -638,19 +549,19 @@ jobs:
           cp ios-out/checksums-ios.sha256     ./checksums-ios.sha256
 
           # Linux update package: binary + updater + shader + lib
-          UPDATE_LINUX="YataiDON update.sh shader/"
+          UPDATE_LINUX="OurTaiko update.sh LICENSE NOTICE shader/"
           [ -d linux/lib ] && UPDATE_LINUX="$UPDATE_LINUX lib/"
           tar -czf update-linux.tar.gz -C linux $UPDATE_LINUX
 
           # Windows update package: binary + updater + dlls + shader
-          UPDATE_WIN="YataiDON.exe update.ps1 update.bat shader/"
+          UPDATE_WIN="OurTaiko.exe update.ps1 update.bat LICENSE NOTICE shader/"
           for dll in windows/*.dll; do
             [ -f "$dll" ] && UPDATE_WIN="$UPDATE_WIN $(basename "$dll")"
           done
           tar -czf update-windows.tar.gz -C windows $UPDATE_WIN
 
           # macOS update package: binary + updater + shader + lib
-          UPDATE_MACOS="YataiDON update.sh shader/"
+          UPDATE_MACOS="OurTaiko update.sh LICENSE NOTICE shader/"
           [ -d macos/lib ] && UPDATE_MACOS="$UPDATE_MACOS lib/"
           tar -czf update-macos.tar.gz -C macos $UPDATE_MACOS
 
@@ -658,11 +569,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            YataiDON-Linux.zip
-            YataiDON-Windows.zip
-            YataiDON-macOS.zip
-            YataiDON-Android.apk
-            YataiDON-iOS-unsigned.ipa
+            OurTaiko-Linux.zip
+            OurTaiko-Windows.zip
+            OurTaiko-macOS.zip
+            OurTaiko-Android.apk
+            OurTaiko-iOS-unsigned.ipa
             update-linux.tar.gz
             update-windows.tar.gz
             update-macos.tar.gz
@@ -670,7 +581,8 @@ jobs:
             checksums-windows.sha256
             checksums-macos.sha256
             checksums-ios.sha256
-          name: "YataiDON [Latest Release]"
-          tag_name: "latest"
+          name: "OurTaiko [Latest Release]"
+          tag_name: "build-${{ github.run_number }}-${{ github.run_attempt }}"
+          target_commitish: ${{ github.sha }}
           make_latest: true
           token: ${{ secrets.GITHUB_TOKEN }}

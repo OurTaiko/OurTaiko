@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
-project(YataiDON VERSION 1.0.2 LANGUAGES C CXX)
+project(OurTaiko VERSION 1.0.2 LANGUAGES C CXX)
+set(PROJECT_AUTHOR "OurTaiko")
 
 cmake_policy(SET CMP0002 NEW)  # Logical target names must be globally unique
 cmake_policy(SET CMP0079 NEW)  # Allow target_link_libraries() everywhere
@@ -24,8 +25,6 @@ endif()
 
 set(CMAKE_SKIP_INSTALL_RULES ON)
 
-set(_env_NETWORK_URL "")
-set(_env_NETWORK_AUTH_KEY "")
 if(EXISTS "${CMAKE_SOURCE_DIR}/.env")
   file(STRINGS "${CMAKE_SOURCE_DIR}/.env" _env_lines)
   foreach(_env_line ${_env_lines})
@@ -37,12 +36,10 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/.env")
   endforeach()
 endif()
 
-set(NETWORK_URL "${_env_NETWORK_URL}" CACHE STRING "Base URL of the server backend")
-set(NETWORK_AUTH_KEY "${_env_NETWORK_AUTH_KEY}" CACHE STRING "Auth key for the server backend")
-if(NETWORK_URL AND NETWORK_AUTH_KEY)
-  set(NETWORK_ENABLED ON)
-else()
-  set(NETWORK_ENABLED OFF)
+# Fanmade endpoints are configured at runtime in TOML.
+option(FANMADE_NETWORK "Enable native OurTaiko Fanmade client" ON)
+if(EMSCRIPTEN)
+  set(FANMADE_NETWORK OFF)
 endif()
 
 set(DATATABLE_SEED "${_env_DATATABLE_SEED}" CACHE STRING "Decryption seed for the gen 4 datatable")
@@ -67,7 +64,7 @@ if(IOS)
     endif()
   endforeach()
   if(CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "16.3")
-    message(FATAL_ERROR "YataiDON requires iOS 16.3+ for C++20 floating-point formatting")
+    message(FATAL_ERROR "OurTaiko requires iOS 16.3+ for C++20 floating-point formatting")
   endif()
   # Never resolve macOS Homebrew libraries while cross-compiling.
   set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
@@ -75,10 +72,10 @@ if(IOS)
   set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
   set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
   set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-  if(NETWORK_ENABLED)
+  if(FANMADE_NETWORK)
     message(STATUS "iOS online services enabled (CPR/curl with Apple native TLS)")
   else()
-    message(STATUS "iOS online services disabled: configure NETWORK_URL and NETWORK_AUTH_KEY to enable")
+    message(STATUS "iOS online services disabled: set FANMADE_NETWORK=ON to enable")
   endif()
 endif()
 
@@ -111,6 +108,21 @@ else()
   add_executable(${PROJECT_NAME} ${CppFiles} ${HeaderFiles})
 endif()
 add_dependencies(${PROJECT_NAME} skin_config_gen texture_ids_gen)
+
+# Ship attribution with local desktop builds as well as CI release archives.
+if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/NOTICE"
+      "$<TARGET_FILE_DIR:${PROJECT_NAME}>"
+    VERBATIM)
+endif()
+
+if(WIN32)
+  enable_language(RC)
+  configure_file(windows/OurTaiko.rc.in "${CMAKE_BINARY_DIR}/OurTaiko.rc" @ONLY)
+  target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/OurTaiko.rc")
+endif()
 
 if(MINGW)
   target_link_options(${PROJECT_NAME} PRIVATE -static-libgcc -static-libstdc++ -static)
@@ -165,14 +177,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     miniz
 )
 
-if(NETWORK_ENABLED)
-  target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE
-    NETWORK_URL="${NETWORK_URL}"
-    NETWORK_AUTH_KEY="${NETWORK_AUTH_KEY}"
-    CLIENT_VERSION="${PROJECT_VERSION}"
-  )
-endif()
 
 if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME} PRIVATE cpptrace::cpptrace)
@@ -187,6 +191,14 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE sndfile samplerate)
+if(FANMADE_NETWORK)
+  target_link_libraries(${PROJECT_NAME} PRIVATE cpr::cpr)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE FANMADE_NETWORK)
+endif()
+if(APPLE)
+  target_link_libraries(${PROJECT_NAME} PRIVATE iconv)
+endif()
+
 if(NOT ANDROID AND NOT IOS AND NOT EMSCRIPTEN)
   target_link_libraries(${PROJECT_NAME} PRIVATE rtaudio)
 endif()
@@ -204,10 +216,6 @@ if(SUPPORT_FUMEN)
 endif()
 
 include(cmake/platform.cmake)
-option(YATAIDON_BUILD_NETWORK_TESTS "Build isolated Simulator network integration checks" OFF)
-if(YATAIDON_BUILD_NETWORK_TESTS)
-  add_subdirectory(tests/network)
-endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
@@ -228,7 +236,7 @@ message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Platform: ${CMAKE_SYSTEM_NAME}")
 if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT WIN32 AND NOT ANDROID AND NOT IOS)
-  message(STATUS "Sanitizers: AddressSanitizer, LeakSanitizer, UndefinedBehaviorSanitizer")
+  message(STATUS "Sanitizers: ${_debug_sanitizers}")
 endif()
 message(STATUS "===============================================================")
 message(STATUS "")

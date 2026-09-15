@@ -82,6 +82,7 @@ private:
     std::queue<std::unique_ptr<BaseBox>> pending_boxes;
     std::queue<std::unique_ptr<BaseBox>> pending_inline_boxes;
     std::atomic<bool>        loading_complete{false};
+    std::atomic<bool>        server_loading{false};
     std::atomic<bool>        abort_loading{false};
 
     std::optional<fs::path>  reopen_folder_path;
@@ -163,6 +164,8 @@ public:
     // themselves are skin-independent, so is_preloaded is left alone); the
     // next init() then takes its already-existing full-rebuild path.
     void reset_for_skin_reload();
+    void prepare_catalog_refresh();
+    bool is_server_loading() const { return server_loading.load(); }
     void add_to_recent(const SongBox* song);
     void toggle_favorite(SongBox* song);
     void refresh_scores();
@@ -174,8 +177,6 @@ public:
     void apply_diff_sort(int course, int level, int order = 1);
     void cancel_diff_sort();
     void load_current_directory(const fs::path path);
-    bool jump_to_song(const std::string& hash);
-    bool jump_to_song_path(const fs::path& song_path);
     void enter_diff_select();
     void exit_diff_select();
     float get_diff_fade_in();

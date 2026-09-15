@@ -1,4 +1,5 @@
 #include "ios.h"
+#include "game_data_install.h"
 #import <Foundation/Foundation.h>
 #import <AVFoundation/AVFoundation.h>
 #include <spdlog/spdlog.h>
@@ -56,27 +57,7 @@ void ios_prepare_filesystem() {
         fs::path destination(documents.fileSystemRepresentation);
         fs::path resources([NSBundle mainBundle].resourcePath.fileSystemRepresentation);
         resources /= "GameData";
-        fs::create_directories(destination);
-
-        // Keep the existing relative-path asset loaders and all writable files
-        // together. Copy only missing files so upgrades preserve user content.
-        for (const auto& entry : fs::recursive_directory_iterator(resources)) {
-            // The iterator already yields paths rooted at resources. Avoid
-            // canonicalizing both paths (and querying every ancestor) per file.
-            fs::path relative = entry.path().lexically_relative(resources);
-            fs::path target = destination / relative;
-            if (entry.is_directory()) fs::create_directories(target);
-            else if (entry.is_regular_file()) {
-                // Parent directories were visited before their children.
-                // Shaders ship with the executable and must match its version.
-                bool shader = *relative.begin() == "shader";
-                if (shader || !fs::exists(target)) {
-                    fs::copy_file(entry.path(), target, shader ? fs::copy_options::overwrite_existing
-                                                             : fs::copy_options::skip_existing);
-                }
-            }
-        }
-        fs::create_directories(destination / "Songs");
+        game_data::install(resources, destination);
         fs::current_path(destination);
     }
 }

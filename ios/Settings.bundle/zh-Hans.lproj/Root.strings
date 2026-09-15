@@ -1,0 +1,15 @@
+"ONLINE_SERVERS" = "在线服务器";
+"RESTART_NOTICE" = "修改在线设置后，请完全退出并重新打开 OurTaiko。每个启用的服务器使用独立账号，并显示为独立的选曲文件夹。";
+"SERVER_NOTICE" = "填写服务器地址与账号后，打开启用开关。服务器地址必须以 http:// 或 https:// 开头。";
+"ENABLED" = "启用";
+"SERVER_NAME" = "服务器名称";
+"BASE_URL" = "服务器地址";
+"USERNAME" = "用户名";
+"PASSWORD" = "密码";
+"HTTP_PROXY" = "HTTP 代理";
+"PROXY_NOTICE" = "留空时不使用代理，直接连接服务器。";
+"SERVER_1" = "服务器 1";
+"SERVER_2" = "服务器 2";
+"SERVER_3" = "服务器 3";
+"SERVER_4" = "服务器 4";
+"SERVER_5" = "服务器 5";

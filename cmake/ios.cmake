@@ -1,6 +1,8 @@
 enable_language(OBJCXX)
-target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/src/platform/ios.mm")
-target_compile_definitions(${PROJECT_NAME} PRIVATE PLATFORM_IOS)
+target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/src/platform/ios.mm"
+  "${CMAKE_SOURCE_DIR}/src/platform/ios_network_settings.mm")
+# Mach-O headers also define PLATFORM_IOS on macOS; use an app-specific guard.
+target_compile_definitions(${PROJECT_NAME} PRIVATE OURTAIKO_PLATFORM_IOS)
 target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3-static
   "-framework UIKit" "-framework Foundation" "-framework OpenGLES"
   "-framework AudioToolbox" "-framework AVFoundation" "-framework CoreMedia"
@@ -9,7 +11,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE SDL3::SDL3-static
 # Objective-C categories in static SDL must be retained by the linker.
 target_link_options(${PROJECT_NAME} PRIVATE -ObjC)
 
-set(IOS_BUNDLE_IDENTIFIER "com.yataidon.app" CACHE STRING "iOS application bundle identifier")
+set(IOS_BUNDLE_IDENTIFIER "org.ourtaiko.fanmade" CACHE STRING "iOS application bundle identifier")
 set(IOS_DEVELOPMENT_TEAM "" CACHE STRING "Apple development team for signing")
 set_target_properties(${PROJECT_NAME} PROPERTIES
   OBJCXX_STANDARD 20
@@ -49,4 +51,9 @@ add_dependencies(${PROJECT_NAME} ios_assets)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ios-resources/GameData")
 target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/ios-resources/GameData")
 set_source_files_properties("${CMAKE_BINARY_DIR}/ios-resources/GameData" PROPERTIES
+  MACOSX_PACKAGE_LOCATION Resources)
+
+# Settings.app reads this bundle directly from the signed app, not Documents.
+target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/ios/Settings.bundle")
+set_source_files_properties("${CMAKE_SOURCE_DIR}/ios/Settings.bundle" PROPERTIES
   MACOSX_PACKAGE_LOCATION Resources)

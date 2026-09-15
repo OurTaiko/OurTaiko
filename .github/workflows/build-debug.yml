@@ -1,7 +1,10 @@
-name: Build YataiDON (Debug)
+name: Build OurTaiko (Debug)
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build-linux:
@@ -9,14 +12,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
+        with:
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install dependencies
         env:
@@ -82,51 +88,50 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Debug \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DCMAKE_C_COMPILER=gcc \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         run: cmake --build build --config Debug
 
       - name: Prepare release package
         run: |
-          mkdir -p release/YataiDON-Linux
-          cp build/bin/YataiDON release/YataiDON-Linux/
-          cp -r Skins release/YataiDON-Linux/
-          cp -r shader release/YataiDON-Linux/
-          cp -r Songs release/YataiDON-Linux/
-          cp config.toml release/YataiDON-Linux/
-          chmod +x release/YataiDON-Linux/YataiDON
+          mkdir -p release/OurTaiko-Linux
+          cp build/bin/OurTaiko release/OurTaiko-Linux/
+          cp -r Skins release/OurTaiko-Linux/
+          cp -r shader release/OurTaiko-Linux/
+          cp -r Songs release/OurTaiko-Linux/
+          cp config.toml release/OurTaiko-Linux/
+          cp LICENSE NOTICE release/OurTaiko-Linux/
+          chmod +x release/OurTaiko-Linux/OurTaiko
 
           # Bundle FFmpeg shared libraries into lib/
-          mkdir -p release/YataiDON-Linux/lib
-          ldd build/bin/YataiDON | grep -E "(libav|libsw).*=>" | awk '{print $3}' | \
-            xargs -I{} cp -L {} release/YataiDON-Linux/lib/
+          mkdir -p release/OurTaiko-Linux/lib
+          ldd build/bin/OurTaiko | grep -E "(libav|libsw).*=>" | awk '{print $3}' | \
+            xargs -I{} cp -L {} release/OurTaiko-Linux/lib/
 
           # Bundle sndfile codec dependencies (ogg, vorbis, FLAC, opus, mp3, etc.)
-          ldd build/bin/YataiDON | grep -E "(libsndfile|libogg|libvorbis|libFLAC|libopus|libmp3lame|libmpg123|libspeex).*=>" | awk '{print $3}' | \
-            grep -v "^$" | xargs -I{} cp -L {} release/YataiDON-Linux/lib/ 2>/dev/null || true
+          ldd build/bin/OurTaiko | grep -E "(libsndfile|libogg|libvorbis|libFLAC|libopus|libmp3lame|libmpg123|libspeex).*=>" | awk '{print $3}' | \
+            grep -v "^$" | xargs -I{} cp -L {} release/OurTaiko-Linux/lib/ 2>/dev/null || true
 
           # Bundle transitive deps of FFmpeg AND sndfile codec libs
-          for so in release/YataiDON-Linux/lib/lib{av,sw,ogg,vorbis,FLAC,opus,mp3lame,mpg123,speex}*.so*; do
+          for so in release/OurTaiko-Linux/lib/lib{av,sw,ogg,vorbis,FLAC,opus,mp3lame,mpg123,speex}*.so*; do
             ldd "$so" 2>/dev/null | grep "=>" | awk '{print $3}' | grep -v "^$" | \
               grep -vE "lib(c\.so|m\.so|dl\.so|rt\.so|pthread\.so|gcc_s\.so|stdc\+\+\.so|X11\.so|GL\.so|asound\.so|pulse\.so|jack\.so|Xi\.so|Xrandr\.so|xcb)" | \
               grep -v "ld-linux" | \
-              xargs -I{} cp -L {} release/YataiDON-Linux/lib/ 2>/dev/null || true
+              xargs -I{} cp -L {} release/OurTaiko-Linux/lib/ 2>/dev/null || true
           done
 
           # Patch rpath: binary looks in $ORIGIN/lib, bundled .so files look in $ORIGIN
-          patchelf --set-rpath '$ORIGIN/lib' release/YataiDON-Linux/YataiDON
-          for so in release/YataiDON-Linux/lib/*.so*; do
+          patchelf --set-rpath '$ORIGIN/lib' release/OurTaiko-Linux/OurTaiko
+          for so in release/OurTaiko-Linux/lib/*.so*; do
             [ -f "$so" ] && patchelf --set-rpath '$ORIGIN' "$so" 2>/dev/null || true
           done
 
       - name: Upload Linux package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-Linux
-          path: release/YataiDON-Linux/
+          name: OurTaiko-Linux
+          path: release/OurTaiko-Linux/
           if-no-files-found: error
 
   build-windows:
@@ -138,15 +143,17 @@ jobs:
         shell: msys2 {0}
 
     steps:
-      - name: Configure Git credentials
-        shell: bash
-        run: |
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
+        with:
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -171,28 +178,27 @@ jobs:
             -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=g++ \
-            -DCMAKE_C_COMPILER=gcc \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_C_COMPILER=gcc
 
       - name: Build
         run: cmake --build build --config Release
 
       - name: Prepare release package
         run: |
-          mkdir -p release/YataiDON-Windows
-          cp build/bin/YataiDON.exe release/YataiDON-Windows/
-          cp build/bin/*.dll release/YataiDON-Windows/ 2>/dev/null || true
-          cp -r Skins release/YataiDON-Windows/
-          cp -r shader release/YataiDON-Windows/
-          cp -r Songs release/YataiDON-Windows/
-          cp config.toml release/YataiDON-Windows/
+          mkdir -p release/OurTaiko-Windows
+          cp build/bin/OurTaiko.exe release/OurTaiko-Windows/
+          cp build/bin/*.dll release/OurTaiko-Windows/ 2>/dev/null || true
+          cp -r Skins release/OurTaiko-Windows/
+          cp -r shader release/OurTaiko-Windows/
+          cp -r Songs release/OurTaiko-Windows/
+          cp config.toml release/OurTaiko-Windows/
+          cp LICENSE NOTICE release/OurTaiko-Windows/
 
       - name: Upload Windows package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-Windows
-          path: release/YataiDON-Windows/
+          name: OurTaiko-Windows
+          path: release/OurTaiko-Windows/
           if-no-files-found: error
 
   build-macos:
@@ -200,15 +206,17 @@ jobs:
     runs-on: macos-latest
 
     steps:
-      - name: Configure Git credentials
-        run: |
-          git config --global credential.helper ""
-          git config --global url."https://${{ secrets.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}@ese.tjadataba.se/".insteadOf "https://ese.tjadataba.se/"
-
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          submodules: false
+
+      - name: Prepare skin dependencies
+        uses: ./.github/actions/prepare-skins
+        with:
+          gitea-user: ${{ secrets.GITEA_USER }}
+          gitea-token: ${{ secrets.GITEA_TOKEN }}
+          allow-insecure-tls: ${{ vars.SKINS_ALLOW_INSECURE_TLS || 'true' }}
 
       - name: Install dependencies
         run: |
@@ -237,28 +245,27 @@ jobs:
             -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_C_COMPILER=clang \
             -DCMAKE_PREFIX_PATH="$(brew --prefix)" \
-            -DCMAKE_EXE_LINKER_FLAGS="-L$(brew --prefix)/lib" \
-            -DNETWORK_URL="${{ secrets.NETWORK_URL }}" \
-            -DNETWORK_AUTH_KEY="${{ secrets.NETWORK_AUTH_KEY }}"
+            -DCMAKE_EXE_LINKER_FLAGS="-L$(brew --prefix)/lib"
 
       - name: Build
         run: cmake --build build --config Debug
 
       - name: Prepare release package
         run: |
-          mkdir -p release/YataiDON-macOS
-          cp build/bin/YataiDON release/YataiDON-macOS/
-          cp -r Skins release/YataiDON-macOS/
-          cp -r shader release/YataiDON-macOS/
-          cp -r Songs release/YataiDON-macOS/
-          cp config.toml release/YataiDON-macOS/
-          chmod +x release/YataiDON-macOS/YataiDON
+          mkdir -p release/OurTaiko-macOS
+          cp build/bin/OurTaiko release/OurTaiko-macOS/
+          cp -r Skins release/OurTaiko-macOS/
+          cp -r shader release/OurTaiko-macOS/
+          cp -r Songs release/OurTaiko-macOS/
+          cp config.toml release/OurTaiko-macOS/
+          cp LICENSE NOTICE release/OurTaiko-macOS/
+          chmod +x release/OurTaiko-macOS/OurTaiko
 
       - name: Upload macOS package
         uses: actions/upload-artifact@v4
         with:
-          name: YataiDON-macOS
-          path: release/YataiDON-macOS/
+          name: OurTaiko-macOS
+          path: release/OurTaiko-macOS/
           if-no-files-found: error
 
   build-summary:

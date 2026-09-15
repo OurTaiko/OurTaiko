@@ -5,6 +5,7 @@
 #endif
 #include "navigator.h"
 #include "../../../libs/filesystem.h"
+#include "../../../libs/fanmade.h"
 #include "../../../libs/scores.h"
 #include "../../../libs/audio.h"
 #include <deque>
@@ -104,6 +105,11 @@ FolderBox::FolderBox(const fs::path& path, const BoxDef& box_def, std::map<std::
 
 void FolderBox::refresh_scores(std::map<std::pair<std::string, std::string>, fs::path>& song_files) {
     (void)song_files;
+    if(auto count=fanmade::client().folder_count(path)) {
+        crown.clear(); crown_p2.clear(); scan_pending=false;
+        tja_count=*count;
+        return;
+    }
     {
         std::lock_guard<std::mutex> lock(scan_cache_mutex);
         auto it = scan_cache.find(path);
@@ -166,7 +172,8 @@ FolderBox::~FolderBox() = default;
 void FolderBox::load_text() {
     BaseBox::load_text();
     hori_name = std::make_unique<OutlinedText>(text_name, tex.skin_config[SC::SONG_HORI_NAME].font_size, ray::WHITE, ray::BLACK, false);
-    tja_count_text = std::make_unique<OutlinedText>(std::to_string(tja_count), tex.skin_config[SC::SONG_TJA_COUNT].font_size, ray::WHITE, ray::BLACK, false);
+    tja_count_text = std::make_unique<OutlinedText>((tja_count<0 ? "--" : std::to_string(tja_count)), tex.skin_config[SC::SONG_TJA_COUNT].font_size, ray::WHITE, ray::BLACK, false);
+    rendered_count=tja_count;
     if (is_osu_folder) {
         auto it = fs::directory_iterator(path);
         while (it->path().extension() != ".jpg" && it->path().extension() != ".png") {
@@ -184,6 +191,7 @@ void FolderBox::load_text() {
 }
 
 void FolderBox::update(double current_time) {
+    if(auto count=fanmade::client().folder_count(path)) tja_count=*count;
     if (scan_pending) {
         std::lock_guard<std::mutex> lock(scan_cache_mutex);
         auto it = scan_cache.find(path);
@@ -192,11 +200,13 @@ void FolderBox::update(double current_time) {
             crown_p2 = it->second.crown_p2;
             tja_count = it->second.tja_count;
             scan_pending = false;
-            // The count text may already be baked with the placeholder.
-            if (text_loaded)
-                tja_count_text = std::make_unique<OutlinedText>(std::to_string(tja_count),
-                    tex.skin_config[SC::SONG_TJA_COUNT].font_size, ray::WHITE, ray::BLACK, false);
         }
+    }
+    // refresh_scores() can update the number before this frame; compare the
+    // rendered value so an existing text texture cannot retain the old count.
+    if(text_loaded && rendered_count!=tja_count) {
+        tja_count_text=std::make_unique<OutlinedText>(tja_count<0 ? "--" : std::to_string(tja_count),tex.skin_config[SC::SONG_TJA_COUNT].font_size,ray::WHITE,ray::BLACK,false);
+        rendered_count=tja_count;
     }
 
     bool is_open_prev = yellow_box_opened;

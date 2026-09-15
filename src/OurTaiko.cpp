@@ -2,7 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <rlgl.h>
-#if defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS)
+#if defined(PLATFORM_ANDROID) || defined(OURTAIKO_PLATFORM_IOS)
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL.h>
 #endif
@@ -14,7 +14,7 @@
 #include "libs/input.h"
 #include "libs/logging.h"
 #include "libs/camera_utils.h"
-#include "libs/network.h"
+#include "libs/fanmade.h"
 #include "libs/screen.h"
 #include "libs/script.h"
 #include "libs/song_parser.h"
@@ -256,7 +256,7 @@ void reload_skin_screens() {
     populate_screens(g_loop->screens, g_loop->current_screen);
 }
 
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
 static bool SDLCALL ios_lifecycle_event(void*, SDL_Event* event) {
     if (event->type == SDL_EVENT_WILL_ENTER_BACKGROUND) {
         ios_set_suspended(true);
@@ -277,17 +277,17 @@ static void run_frame() {
     g_frame_ms = get_current_ms();
 
     ray::PollInputEvents();
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
     if (ios_is_suspended()) return;
 #endif
-#if defined(__EMSCRIPTEN__) || defined(PLATFORM_IOS)
+#if defined(__EMSCRIPTEN__) || defined(OURTAIKO_PLATFORM_IOS)
     poll_keyboard_once();
 #endif
     poll_touch_once();
 
     auto frame_start = std::chrono::steady_clock::now();
 
-#ifndef PLATFORM_IOS
+#ifndef OURTAIKO_PLATFORM_IOS
     if (check_key_pressed(global_data.config->keys.fullscreen_key)) {
         ray::ToggleFullscreen();
         spdlog::info("Toggled fullscreen");
@@ -316,7 +316,7 @@ static void run_frame() {
 
     Screen* screen = L.screens[L.current_screen].get();
 
-    network.update(g_frame_ms);
+    fanmade::client().update();
     std::optional<Screens> next_screen = screen->update();
 
     if (screen->screen_init) {
@@ -372,7 +372,7 @@ static void run_frame() {
 
     ray::EndBlendMode();
     ray::EndMode2D();
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
     if (global_data.config->general.touch_input) {
         float sw = static_cast<float>(ray::GetScreenWidth());
         float sh = static_cast<float>(ray::GetScreenHeight());
@@ -404,7 +404,7 @@ static void run_frame() {
         spdlog::info("Screenshot saved");
     }
 
-#if !defined(__EMSCRIPTEN__) && !defined(PLATFORM_IOS)
+#if !defined(__EMSCRIPTEN__) && !defined(OURTAIKO_PLATFORM_IOS)
     if (L.target_duration.count() > 0) {
         L.next_frame_time += L.target_duration;
         auto now = std::chrono::steady_clock::now();
@@ -421,7 +421,8 @@ static void run_frame() {
 }
 
 int main(int argc, char* argv[]) {
-    spdlog::info("Starting YataiDON");
+    spdlog::info("Starting OurTaiko");
+    spdlog::info("Author: OurTaiko. Based on YataiDON by Yono (Yonokid) and contributors; GNU GPLv3. See LICENSE and NOTICE.");
     set_working_directory_to_executable();
     global_data.config = new Config(get_config());
     init_scores_manager(global_data.config->general.score_method == ScoreMethod::GEN3);
@@ -434,7 +435,7 @@ int main(int argc, char* argv[]) {
         SDL_SetHint(SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1");
         SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
     #endif
-#ifdef PLATFORM_IOS
+#ifdef OURTAIKO_PLATFORM_IOS
     // UIKit owns the event loop. SDL_WaitEvent while minimized would prevent
     // UIKit from delivering the foreground event that wakes the game again.
     flags = ray::FLAG_VSYNC_HINT | ray::FLAG_WINDOW_ALWAYS_RUN;
@@ -446,7 +447,7 @@ int main(int argc, char* argv[]) {
     ray::SetTraceLogLevel(ray::LOG_ERROR);
     setup_logging(global_data.config->general.log_level);
 
-    ray::InitWindow(1280, 720, "YataiDON");
+    ray::InitWindow(1280, 720, "OurTaiko");
     load_skin();
 
     scores_manager.player_1 = global_data.config->general.player_1_id;
@@ -455,71 +456,6 @@ int main(int argc, char* argv[]) {
         scores_manager.player_1_data = *pd;
     if (auto pd = scores_manager.get_player_data(scores_manager.player_2))
         scores_manager.player_2_data = *pd;
-
-    const bool net_ok = network.probe_online();
-    if (net_ok && global_data.config->network.access_code.empty()) {
-        std::string access_code = network.register_user(scores_manager.player_1_data.username);
-        if (!access_code.empty()) {
-            global_data.config->network.access_code = access_code;
-            save_config(*global_data.config);
-        }
-    }
-
-    if (net_ok && !global_data.config->network.access_code.empty() &&
-        network.check_import_requested(global_data.config->network.access_code)) {
-        spdlog::info("hiroba requested a score import, exporting scores.db");
-        scores_manager.export_to_hiroba(global_data.config->network.access_code, scores_manager.player_1);
-        network.clear_import_flag(global_data.config->network.access_code);
-    }
-
-    if (net_ok && !global_data.config->network.access_code.empty()) {
-        ray::Color chara_color_1, chara_color_2, chara_color_3;
-        if (network.fetch_chara_colors(global_data.config->network.access_code, chara_color_1, chara_color_2, chara_color_3)) {
-            scores_manager.player_1_data.chara_color_1 = chara_color_1;
-            scores_manager.player_1_data.chara_color_2 = chara_color_2;
-            scores_manager.player_1_data.chara_color_3 = chara_color_3;
-            scores_manager.save_player_data(scores_manager.player_1_data);
-        }
-
-        std::string server_username;
-        if (network.fetch_username(global_data.config->network.access_code, server_username) &&
-            !server_username.empty() && server_username != scores_manager.player_1_data.username) {
-            scores_manager.player_1_data.username = server_username;
-            scores_manager.save_player_data(scores_manager.player_1_data);
-        }
-
-        std::string server_title;
-        if (network.fetch_title(global_data.config->network.access_code, server_title) &&
-            !server_title.empty() && server_title != scores_manager.player_1_data.title) {
-            scores_manager.player_1_data.title = server_title;
-            scores_manager.save_player_data(scores_manager.player_1_data);
-        }
-
-        int server_title_bg;
-        if (network.fetch_title_bg(global_data.config->network.access_code, server_title_bg) &&
-            server_title_bg != scores_manager.player_1_data.title_bg) {
-            scores_manager.player_1_data.title_bg = server_title_bg;
-            scores_manager.save_player_data(scores_manager.player_1_data);
-        }
-
-        int head_index, body_index, cos_index;
-        bool is_costume;
-        if (network.fetch_costume(global_data.config->network.access_code, head_index, body_index, cos_index, is_costume) &&
-            (head_index != scores_manager.player_1_data.chara_head_index ||
-             body_index != scores_manager.player_1_data.chara_body_index ||
-             cos_index != scores_manager.player_1_data.chara_cos_index ||
-             is_costume != scores_manager.player_1_data.chara_is_costume)) {
-            scores_manager.player_1_data.chara_head_index = head_index;
-            scores_manager.player_1_data.chara_body_index = body_index;
-            scores_manager.player_1_data.chara_cos_index = cos_index;
-            scores_manager.player_1_data.chara_is_costume = is_costume;
-            scores_manager.save_player_data(scores_manager.player_1_data);
-        }
-
-        if (global_data.config->network.sync_scores) {
-            scores_manager.sync_from_server(global_data.config->network.access_code);
-        }
-    }
 
     Screens initial_screen = check_args(argc, argv);
 
@@ -539,7 +475,7 @@ int main(int argc, char* argv[]) {
 
     L.camera = compute_camera2d(tex.screen_width, tex.screen_height);
 
-#if !defined(__EMSCRIPTEN__) && !defined(PLATFORM_IOS)
+#if !defined(__EMSCRIPTEN__) && !defined(OURTAIKO_PLATFORM_IOS)
     if (global_data.config->video.borderless) {
         ray::ToggleBorderlessWindowed();
         spdlog::info("Borderless window enabled");
@@ -551,7 +487,7 @@ int main(int argc, char* argv[]) {
 #endif
 
     rlSetBlendFactorsSeparate(RL_SRC_ALPHA, RL_ONE_MINUS_SRC_ALPHA, RL_ONE, RL_ONE_MINUS_SRC_ALPHA, RL_FUNC_ADD, RL_FUNC_ADD);
-#if defined(PLATFORM_ANDROID) || defined(PLATFORM_IOS) || defined(__EMSCRIPTEN__)
+#if defined(PLATFORM_ANDROID) || defined(OURTAIKO_PLATFORM_IOS) || defined(__EMSCRIPTEN__)
     ray::SetExitKey(ray::KEY_NULL);
 #else
     ray::SetExitKey(global_data.config->keys.exit_key);
@@ -561,7 +497,7 @@ int main(int argc, char* argv[]) {
     L.next_frame_time = std::chrono::steady_clock::now();
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop(run_frame, 0, 1);
-#elif defined(PLATFORM_IOS)
+#elif defined(OURTAIKO_PLATFORM_IOS)
     poll_touch_once();
     SDL_AddEventWatch(ios_lifecycle_event, nullptr);
     int window_count = 0;

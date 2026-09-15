@@ -1,0 +1,15 @@
+"ONLINE_SERVERS" = "Online servers";
+"RESTART_NOTICE" = "Restart OurTaiko after changing online settings. Each enabled server has its own account and song folder.";
+"SERVER_NOTICE" = "Enter the server address and account, then enable this server. The address must start with http:// or https://.";
+"ENABLED" = "Enabled";
+"SERVER_NAME" = "Server name";
+"BASE_URL" = "Server URL";
+"USERNAME" = "Username";
+"PASSWORD" = "Password";
+"HTTP_PROXY" = "HTTP proxy";
+"PROXY_NOTICE" = "Leave blank to connect directly without a proxy.";
+"SERVER_1" = "Server 1";
+"SERVER_2" = "Server 2";
+"SERVER_3" = "Server 3";
+"SERVER_4" = "Server 4";
+"SERVER_5" = "Server 5";

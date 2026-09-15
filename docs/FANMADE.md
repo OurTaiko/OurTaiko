@@ -1,0 +1,110 @@
+# OurTaiko Fanmade 游戏接入
+
+iOS 在系统设置中管理在线服务器；其他平台使用 TOML。游戏内不新增网络设置界面。每个服务器独立登录、下载和提交成绩。
+
+## iOS 系统设置
+
+打开 iPhone / iPad 的 **设置 → App → OurTaiko**（旧版 iOS 在设置列表中直接选择 OurTaiko）。在线服务器提供 5 个独立配置位，每个包含启用开关、服务器名称、服务器地址、用户名、密码和 HTTP 代理。服务器 1 预填 OurTaiko Fanmade 公网地址，其余地址为空；新安装默认全部关闭，填写账号后再启用。密码使用系统遮蔽输入框。
+
+修改后完全退出并重新打开游戏生效。进入选曲时仅启用的配置位会生成曲库文件夹；代理留空表示直连。系统设置支持中文和英文，跟随系统语言。游戏内的语言设置不控制系统设置页。
+
+首次升级会把现有 TOML 中的前 5 个服务器迁入系统设置，保留账号、密码和代理。如果用户已经在系统设置里配置过，则不会覆盖。迁移只执行一次，之后 iOS 在线配置仅来自 `NSUserDefaults`，禁用全部服务器也不会回退读取 TOML。超过 5 个的旧条目不会导入。
+
+其他游戏设置仍由 TOML 管理。iOS 保存游戏设置时不再写入 `network` 段，也不会将系统设置里的密码复制回 TOML；桌面、Android 等平台继续读写 TOML 的 `network.servers`。已有旧 TOML 的网络段在下次游戏保存配置时移除。
+
+## 其他平台配置
+
+桌面运行目录优先读取 `dev-config.toml`，没有时读取 `config.toml`。iOS 的其他游戏设置仍在 Documents 配置文件中；在线设置使用上面的系统设置。不要把本机 `127.0.0.1` 当作另一台设备的地址：真机应填写后端所在电脑的局域网地址，后端需监听该网络接口。
+
+删除 `[network]` 下的 `servers = []` 后，加入以下数组表。多个服务器重复整个 `[[network.servers]]` 段：
+
+```toml
+[[network.servers]]
+name = "OurTaiko Fanmade"
+base_url = "http://127.0.0.1:8080"
+username = "你的用户名"
+password = "你的密码"
+http_proxy = ""
+
+# [[network.servers]]
+# name = "第二个服务器"
+# base_url = "https://taiko.example.com"
+# username = "另一个账号"
+# password = "另一个密码"
+# http_proxy = "http://127.0.0.1:7890"
+```
+
+`base_url` 是 API 服务的根地址，客户端添加 `/api/v1/...`。`name` 是选曲中的文件夹名。相同 API 地址和用户名视为同一个配置；不同账号的成绩和缓存相互隔离。空 `http_proxy` 显式禁用代理，包括环境变量中的代理。HTTP/HTTPS 下载禁止自动跳转，并保留 TLS 证书校验。公网服务请使用 HTTPS。
+
+Android 的原生 OpenSSL 客户端使用 APK 内置 `cacert.pem` 验证 HTTPS。
+证书、DNS、连接超时和响应体超限现在分别显示错误；旧版统一提示
+`NETWORK_OR_SIZE_ERROR` 的 Android 证书问题见 [修复记录](ANDROID_NETWORK_FIX.md)。
+
+账号密码保存在对应平台的本机配置中，Bearer token 只在进程内保存，到期自动重新登录。含密码的配置不要提交到 Git；仓库已忽略 `dev-config.toml`。原 `online_play`、`sync_scores` 和 `access_code` 已从配置结构、读写和设置绑定中移除。旧文件含这些字段仍可读取，保存配置时会自动清除；`network.servers` 中的服务器及账号配置继续保留。游戏载入皮肤设置模板时会过滤这三个旧选项及因此变空的分类，兼容已安装的旧皮肤。
+
+## 生命周期
+
+1. 启动 Loading 只预载本地歌曲。从模式选择进入单人／双人／练习选曲时，在过场加载中逐个服务器重新登录，并从 `/api/v1/game/bootstrap` 取得分类、各分类数量、服务器去重总数及账号历史成绩，不请求谱面列表。网络请求在工作线程执行，过场保持绘制并显示状态。某个服务器失败不会阻止其他服务器和本地歌曲进入选曲，失败服务器文件夹显示错误。
+2. 每个服务器在选曲中有独立文件夹（示例名 OurTaiko Fanmade），内含 Game / Virtual Singer / Pop / Classic / Variety 分类 `box.def`。每次打开服务器文件夹，工作线程依次请求全部 `/api/v1/game/categories/{id}/charts`。加载时显示提示、暂停选曲倒计时并清理输入。全部成功后一起替换展示目录和数量；进入分类直接读取已有列表，不再请求网络。重新进入服务器即可刷新新增歌曲、分类归属和移除记录，空分类显示 0；服务器总数按作品 ID 去重。失败保留上次完整缓存，界面只显示返回入口和错误状态，重新进入服务器可重试。目录文件只含 API 的多语言标题、难度和等级，不提前下载原始 TJA 和音频。同一谱面在多个分类的路径不同，文件缓存及成绩仍使用同一个作品 ID。
+3. 当前版本的各难度最高分及对应良、可、不可、连打数和最大连击写入选曲成绩数据，供皮肤显示。所有历史成绩保存在客户端内存中；旧版本成绩不混入当前版本。API 未提供 gauge、冠和段位，界面不会伪造这些字段。单人使用 P1 或 P2 均对应配置账号；双人时仅首先登录的一方提交到这个账号。
+4. 确定难度后，在加载页重新获取歌曲详情和 SHA-256，下载缺失或哈希不符的文件。只有哈希验证成功后才进入游戏，下载中可按返回异步取消。作者的新版本会在此阶段取得；原先所选难度已删除时停止加载并显示错误。
+   加载页分别显示谱面和歌曲音频的进度条、百分比、已下载量及总大小。服务器未提供总大小时显示已下载量和活动进度条；校验、缓存命中和下载完成各有独立状态。百分比来自实际网络传输字节数，文件只有通过 SHA-256 校验并保存后才标记完成。界面支持中文及英文，跟随游戏语言；下载失败和取消时保留当前两项进度。
+5. 下载保存原始字节。游玩副本转换为 UTF-8，使用 API 指定的谱面块，优先选同难度唯一 Single；纯 DOUBLE 保留 P1/P2 块。副本使用 API 最新翻译与标题，根据 API 的 `audioName` 后缀，将 WAVE 指向已校验的 `audio.ogg` 或 `audio.mp3`。仅使用固定缓存名，原始文件名不会成为本地路径；后缀不区分大小写。未上传的图片/视频引用不被加载。
+6. 正常结算后，按实际版本提交歌曲 ID、难度、良、可、不可、分数、连打数和最大连击 `max_combo`。自动演奏、跳过游玩和 DOUBLE 不上传；中途退出不提交。练习场景不使用这一结算上传流程。
+7. 上传先写本地持久化队列（含 `max_combo`），再异步发送。临时失败每 30 秒重试，重启后继续处理同一服务器/账号的队列。每次游玩固定幂等 key，重试不生成重复成绩。成功后更新内存，选曲界面刷新成绩。
+
+旧版将 MP3 也保存为 `audio.ogg`，会使部分带 ID3 标签的 MP3 在 FFmpeg 探测时失败。加载时会核对旧缓存的 SHA-256，正确的 MP3 缓存直接改名为 `audio.mp3`，无需重新下载；缺失或损坏时按正常下载流程恢复。
+
+`cache/fanmade/catalog/` 是进入选曲过场时重建、进入服务器时刷新谱面列表的展示目录；`objects/` 是分服务器/歌曲/版本的文件缓存；`pending/` 保存待上传 JSON。服务器永久拒绝的记录改为 `.rejected` 保留，状态区显示失败。作者在游玩期间换版时，后端返回 409，记录保留本地，不会归到新版本。
+
+成绩提交及响应必须包含非负整数 `max_combo`；后端拒绝缺失或 `null` 的提交，游戏端将缺失或 `null` 的成绩字段视为接口数据错误，不填入默认值。最大连击取所展示的最高分那次游玩的记录。
+
+其他设备刚提交的成绩及分类定义，在下一次从模式选择进入选曲时同步；歌曲列表每次打开服务器刷新，已经进入内存的歌曲在游玩加载时取得最新版本。暂未加入定时全量刷新。服务器支持的 Tower/Dan 会以不支持的目录项标记；当前普通选曲仅支持 Easy/Normal/Hard/Oni/Edit。Android 的 Shift-JIS 转码尚未实现，会明确报错；UTF-8 不受影响。浏览器构建默认禁用原生网络模块。
+
+## 构建
+
+`FANMADE_NETWORK=ON` 默认启用原生 CPR/curl，服务器地址与账号在运行时读取：iOS 使用系统设置，其他平台使用 TOML。设置为 `OFF` 可构建离线版本；浏览器构建自动禁用原生网络。CMake、Android 和 CI 均不再需要旧服务的 URL/认证密钥。旧联网实现、归档、专用测试、远端选曲与批量同步代码已删除；仍被本地成绩保存和跳过操作使用的修改器序列化、按键记录保留在成绩与游玩模块。
+
+## 验证
+
+2026-09-14 下载进度：原生 HTTP 夹具验证谱面和音频的中间字节进度、已知长度百分比所需数据、未知长度、校验后完成、缓存命中不下载，以及启用进度回调后的中途取消；原有代理、版本隔离、缓存修复和成绩重试检查继续通过。未定义 `FANMADE_NETWORK` 的离线编译及解析检查通过。下载状态以每次加载任务独立的快照在工作线程和绘制线程间传递，不使用可能被后台成绩上传覆盖的全局状态文本。
+
+下载页的模拟器原生绘制夹具确认中文、缓存状态、百分比、下载量及未知长度活动条显示正常；卡片位置避开底部触控鼓面。绘制夹具使用合成进度快照，不等同于实际在线选曲端到端验证。临时夹具及模拟器测试应用已移除，最终 iPad Debug 和 Simulator Release 构建通过，源码及两个可执行文件均确认无临时夹具标记。Android 和桌面未做本次界面运行回归。
+
+2026-09-14 iOS 系统设置：iPad Debug 构建、签名、覆盖安装和首次启动通过。设备自己的偏好域确认已有服务器迁移完成；用户确认 5 个服务器页面及原有配置显示正常。独立 Foundation 夹具通过默认值、五个配置位、Unicode/密码/代理保留、禁用、首次迁移和已有系统设置优先级；实际 `config.cpp` 的 iOS/非 iOS 分支通过读取来源及保存隔离检查。构建产物包含完整 Settings.bundle 和中英文资源。检查命令见 [iOS 配置测试](../tests/ios/README.md)。修改系统设置后重启的完整联网游玩回归、Android/Windows 运行回归尚未执行。
+
+2026-09-14 MP3 缓存修复：从 iPad 提取的 Mistletoe 缓存与服务器 SHA-256 一致；同一文件使用 `.ogg` 后缀时本机 FFmpeg 打开失败，改为 `.mp3` 后可完整解码。原始 iPad Debug 日志也确认 libsndfile 与 FFmpeg 回退均打开失败。原生 HTTP 夹具通过 MP3/OGG 的真实 TJA 路径解析、大小写后缀、固定缓存路径、旧 MP3 缓存迁移、哈希命中及损坏修复，并核对迁移不会增加下载次数。夹具音频为协议测试字节，不用于解码验证。修复后 iPad Pro 11 英寸（第 3 代）的 Debug 构建、签名和覆盖安装通过；设备生成的 WAVE 为 `audio.mp3`，实时日志确认 FFmpeg 解码成功（4,270,464 帧、44,100 Hz、双声道）并开始播放。其他平台未做运行回归。
+
+2026-09-14 最大连击同步：原生 HTTP 夹具覆盖 `max_combo` 拉取、缺失或 `null` 字段拒绝、提交与持久化队列重启重试；iOS Simulator Release 完整构建通过。结算上传和选曲成绩映射均已接入，真机、Android 和 Windows 本次未进行运行回归。
+
+2026-09-14 旧联网配置清理的专项检查：使用实际 `config.cpp` 在临时目录验证旧字段兼容、双服务器账号/代理读写、空列表及配置文件权限；使用实际 PyTaikoGreen 模板验证旧选项过滤、其他设置保留、分类顺序与退出入口。最终 iOS Simulator Release 完整构建通过；本次未进行真机、Android 或 Windows 运行回归。
+
+删除旧联网实现后的专项回归：当前 Fanmade 原生夹具通过多服务器登录、代理、版本隔离、下载缓存与损坏修复、成绩提交及重试检查；不定义 `FANMADE_NETWORK`、不链接 CPR 时的原生模块编译和谱面解析检查通过。重新生成 Xcode 工程后的 iOS Simulator Release 完整构建通过。两个 CI workflow 通过 YAML 结构检查，未执行远端 CI；真机、Android 和 Windows 运行回归仍待验证。
+
+- Go HTTP/PostgreSQL 集成测试：原生/浏览器会话隔离、Origin 拒绝、版本核对、幂等提交和曲库/成绩读取。
+- `tests/fanmade/client.cpp` + `fixture.py`：两个 API、HTTP proxy、空代理直连、旧版本成绩隔离、正确 Single 块/DOUBLE 双人块、原生 TJA 音符解析、缓存命中、损坏修复、取消、提交后响应失败及重启后的幂等重试。
+- 独立数据库 schema 中以 ESE 的 Happy Synthesizer 和 Natsumatsuri 验证真实 Go API、真实 TJA/OGG 与原生解析器，确认成绩落 PostgreSQL；测试后清理数据。
+- iOS Simulator Release 完整构建通过；独立验证应用启动、登录及生成 5 首云端曲库已确认。当前环境的原生 UI 控制服务超时，未完成选曲到结算的手动界面回归。Windows、Android、真机和所有皮肤仍需相应平台回归。
+
+可在 macOS 用仓库现有 CPR 源码构建独立测试（只访问临时测试缓存，不读取 scores.db）：
+
+```sh
+cmake -S .cmake-deps/cpr-src -B /tmp/fanmade-cpr -DCPR_USE_SYSTEM_CURL=ON -DCPR_BUILD_TESTS=OFF -DBUILD_SHARED_LIBS=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/fanmade-cpr --parallel 4
+clang++ -std=c++20 -DFANMADE_NETWORK -I.cmake-deps/cpr-src/include -I/tmp/fanmade-cpr/cpr_generated_includes -I.cmake-deps/rapidjson-src/include -I.cmake-deps/spdlog-src/include tests/fanmade/client.cpp src/libs/fanmade.cpp src/libs/parsers/tja.cpp src/libs/md5.cpp /tmp/fanmade-cpr/lib/libcpr.a -lcurl -liconv -o /tmp/fanmade-client-test
+python3 tests/fanmade/fixture.py /tmp/fanmade-client-test
+```
+
+## 分类曲库升级验证（2026-09-14）
+
+游戏与后端需同步升级：bootstrap 的 `charts` 已由 `categories` 替代，不兼容只支持全量谱面列表的旧服务器／旧游戏。新协议从服务器和分类生成嵌套 `box.def`；分类 ID 经过安全路径字符校验。单个分类仍按需求一次返回所有谱面，历史成绩仍完整同步，单次 API 64 MiB 限制保持原状。未打开的分类不会进入本地全库搜索索引。
+
+- 原生 C++ HTTP 夹具通过：启动无 `.tja`、进入分类才生成谱面、重复进入复用、空分类、失败重试、多分类共享成绩及下载缓存；已有代理、哈希、取消和成绩重试通过。
+- 真实 Go API + 临时 PostgreSQL + 合成 TJA／测试 MP3 通过分类读取、下载、缓存修复和成绩提交，未使用业务数据库。
+- iOS Simulator Release 完整构建通过；本次未安装或进行游戏界面／真机／Android／Windows 运行回归。
+
+## 分类加载时序与数量修复（2026-09-15）
+
+bootstrap 新增各分类 `chartCount` 与顶层去重 `chartCount`。文件夹显示直接采用这些数量，避免把尚未加载的目录扫描为 0；服务器列表加载完成后改用实际返回的受支持谱面计数。兼容缺少数量字段的上一版服务器，首次加载前显示 `--`，不会把未知数量当成 0。服务器重新打开会刷新全部分类，失败不发布半份快照；跨分类下载及成绩缓存继续复用。
+
+原生 HTTP 夹具通过重复 bootstrap、后台请求不阻塞主线程 update、服务器加载、进入分类无网络、跨分类去重、移除归属、空分类归零及中途失败保留文件／注册表／数量检查；既有下载、代理、成绩与版本隔离回归通过。后端 PostgreSQL 集成测试验证 bootstrap 去重总数与各分类数量。iOS Simulator Release 完整构建通过；本次未安装或运行游戏界面，真机、Android 和 Windows 运行回归尚未执行。
