@@ -1,6 +1,8 @@
 #include "fanmade.h"
 #include "sha256.h"
 #include <algorithm>
+#include <climits>
+#include <set>
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -136,6 +138,7 @@ struct Endpoint {
     std::string id,token;
     std::mutex http_mutex;
     bool connected=false;
+    int chart_count=-1;
     std::vector<Score> scores;
     std::map<std::tuple<std::string,std::string,std::string>,Score> best_scores;
     void index_score(const Score& score) {
@@ -234,7 +237,7 @@ struct Client::Impl {
     mutable std::mutex mutex;
     std::mutex prepare_mutex;
     std::mutex catalog_mutex;
-    struct CategoryFolder { std::string server, id; bool loaded = false; };
+    struct CategoryFolder { std::string server, id; int count = -1; };
     std::map<std::string,CategoryFolder> categories;
     std::mutex pump_mutex;
     std::atomic<bool> bootstrapping{false};
@@ -278,9 +281,13 @@ Client::~Client() { if(impl->uploads.valid()) impl->uploads.wait(); }
 Client& client(){ static Client instance; return instance; }
 
 void Client::bootstrap(const std::vector<ServerConfig>& servers,const fs::path& cache) {
+    std::lock_guard catalog(impl->catalog_mutex);
+    std::unique_lock pump(impl->pump_mutex);
     impl->bootstrapping = true;
     struct Reset { std::atomic<bool>& flag; ~Reset(){flag=false;} } reset{impl->bootstrapping};
-    if(impl->uploads.valid()) impl->uploads.get();
+    auto pending=std::move(impl->uploads);
+    pump.unlock();
+    if(pending.valid()) pending.get();
     impl->cache=fs::absolute(cache); impl->root=impl->cache/"catalog";
     fs::create_directories(impl->root);
     // Catalog is disposable display metadata. Content-addressed objects and
@@ -302,14 +309,24 @@ void Client::bootstrap(const std::vector<ServerConfig>& servers,const fs::path& 
             std::lock_guard transport(e->http_mutex);
             login(*e); auto snapshot=json(authorized(*e,"/api/v1/game/bootstrap"));
             if(!snapshot.HasMember("categories")||!snapshot["categories"].IsArray()||!snapshot.HasMember("scores")||!snapshot["scores"].IsArray()) throw std::runtime_error("API_BOOTSTRAP_INVALID");
-            struct Category { std::string id,title,genre; };
+            struct Category { std::string id,title,genre; int count=-1; };
             std::vector<Category> categories;
             for(auto& v:snapshot["categories"].GetArray()) {
                 Category c{str(v,"id"),str(v,"title"),str(v,"genre")};
                 if(c.id.empty()||c.id.size()>64||c.id[0]<'a'||c.id[0]>'z'||c.id.find_first_not_of("abcdefghijklmnopqrstuvwxyz0123456789-")!=std::string::npos)
                     throw std::runtime_error("API_CATEGORY_INVALID");
                 if(std::any_of(categories.begin(),categories.end(),[&](const auto& other){return other.id==c.id;})) throw std::runtime_error("API_CATEGORY_INVALID");
+                if(v.HasMember("chartCount")) {
+                    auto n=number(v,"chartCount");
+                    if(n>INT_MAX) throw std::runtime_error("API_COUNT_INVALID");
+                    c.count=static_cast<int>(n);
+                }
                 categories.push_back(std::move(c));
+            }
+            if(snapshot.HasMember("chartCount")) {
+                auto n=number(snapshot,"chartCount");
+                if(n>INT_MAX) throw std::runtime_error("API_COUNT_INVALID");
+                e->chart_count=static_cast<int>(n);
             }
             std::vector<Score> scores;
             for(auto& v:snapshot["scores"].GetArray()) scores.push_back(score_from(v));
@@ -318,7 +335,7 @@ void Client::bootstrap(const std::vector<ServerConfig>& servers,const fs::path& 
                 auto path=dir/c.id;
                 write(path/"box.def","#TITLE:"+line_text(c.title)+"\n#GENRE:"+line_text(c.genre)+"\n");
                 std::lock_guard lock(impl->mutex);
-                impl->categories[path_key(path)]={e->id,c.id,false};
+                impl->categories[path_key(path)]={e->id,c.id,c.count};
             }
             { std::lock_guard lock(impl->mutex); e->scores=std::move(scores); for(auto& score:e->scores) e->index_score(score); e->connected=true; }
             impl->status(e->config.name+": "+std::to_string(categories.size())+" categories ready");
@@ -327,6 +344,7 @@ void Client::bootstrap(const std::vector<ServerConfig>& servers,const fs::path& 
             write(dir/"box.def","#TITLE:"+line_text(e->config.name)+" ["+err.what()+"]\n");
         }
     }
+    impl->revision++;
     impl->bootstrapping = false;
     update();
 }
@@ -337,54 +355,93 @@ bool Client::is_category(const fs::path& path) const {
     std::lock_guard lock(impl->mutex);
     return impl->categories.count(path_key(path))!=0;
 }
+bool Client::is_server(const fs::path& path) const {
+    std::lock_guard lock(impl->mutex);
+    return !impl->root.empty() && path_key(path.parent_path())==path_key(impl->root) && impl->endpoints.count(path.filename().string());
+}
+std::optional<int> Client::folder_count(const fs::path& path) const {
+    std::lock_guard lock(impl->mutex);
+    if(impl->root.empty()) return {};
+    auto it=impl->categories.find(path_key(path));
+    if(it!=impl->categories.end()) return it->second.count;
+    auto server=impl->endpoints.find(path.filename().string());
+    if(path_key(path.parent_path())==path_key(impl->root)&&server!=impl->endpoints.end()) return server->second->chart_count;
+    return {};
+}
 bool Client::load_directory(const fs::path& path) {
     std::lock_guard loading(impl->catalog_mutex);
-    const auto key=path_key(path);
-    Impl::CategoryFolder folder;
     std::shared_ptr<Endpoint> e;
+    std::vector<Impl::CategoryFolder> folders;
     {
         std::lock_guard lock(impl->mutex);
-        auto it=impl->categories.find(key);
-        if(it==impl->categories.end()) return false;
-        if(it->second.loaded) return true;
-        folder=it->second;
-        e=impl->endpoints.at(folder.server);
+        if(impl->root.empty() || path_key(path.parent_path())!=path_key(impl->root)) return false;
+        auto it=impl->endpoints.find(path.filename().string());
+        if(it==impl->endpoints.end()) return false;
+        e=it->second;
+        for(const auto& [key,folder]:impl->categories) if(folder.server==e->id) folders.push_back(folder);
     }
+    // Publish only a complete snapshot. Failed refreshes retain the previous
+    // on-disk catalog and counts, but the navigator keeps the categories hidden.
+    auto staging=impl->cache/"catalog-staging"/e->id;
+    auto previous=impl->cache/"catalog-previous"/e->id;
     try {
-        impl->status(e->config.name+": loading "+folder.id);
-        rapidjson::Document result;
-        {
-            std::lock_guard transport(e->http_mutex);
-            result=json(authorized(*e,"/api/v1/game/categories/"+folder.id+"/charts"));
-        }
-        if(str(result,"categoryId")!=folder.id||!result.HasMember("charts")||!result["charts"].IsArray()) throw std::runtime_error("API_CATEGORY_INVALID");
+        if(!e->connected) throw std::runtime_error("SERVER_NOT_CONNECTED");
+        fs::remove_all(staging);
+        fs::create_directories(staging);
+        write(staging/"box.def",read(path/"box.def"));
         std::map<std::string,Chart> charts;
-        for(auto& value:result["charts"].GetArray()) {
-            auto c=chart_from(value,folder.server);
-            auto chart_path=path/(c.id+".tja");
-            std::string preview="// Fanmade catalog metadata only. Never play this file.\n"+title_headers(c)+"BPM:"+std::to_string(c.bpm)+"\nDEMOSTART:"+std::to_string(c.demo_start)+"\nWAVE:unavailable.ogg\n";
-            bool supported=false;
-            for(auto& d:c.difficulties) if(d) { supported=true; preview+="COURSE:"+d->course+"\nLEVEL:"+std::to_string(d->level)+"\n#START\n0,\n#END\n"; }
-            if(supported) {
+        std::set<std::string> unique;
+        for(auto& folder:folders) {
+            impl->status(e->config.name+": loading "+folder.id);
+            rapidjson::Document result;
+            {
+                std::lock_guard transport(e->http_mutex);
+                result=json(authorized(*e,"/api/v1/game/categories/"+folder.id+"/charts"));
+            }
+            if(str(result,"categoryId")!=folder.id||!result.HasMember("charts")||!result["charts"].IsArray()) throw std::runtime_error("API_CATEGORY_INVALID");
+            write(staging/folder.id/"box.def",read(path/folder.id/"box.def"));
+            folder.count=0;
+            for(auto& value:result["charts"].GetArray()) {
+                auto c=chart_from(value,e->id);
+                auto chart_path=path/folder.id/(c.id+".tja");
+                std::string preview="// Fanmade catalog metadata only. Never play this file.\n"+title_headers(c)+"BPM:"+std::to_string(c.bpm)+"\nDEMOSTART:"+std::to_string(c.demo_start)+"\nWAVE:unavailable.ogg\n";
+                bool supported=false;
+                for(auto& d:c.difficulties) if(d) { supported=true; preview+="COURSE:"+d->course+"\nLEVEL:"+std::to_string(d->level)+"\n#START\n0,\n#END\n"; }
+                if(!supported) continue;
                 if(!charts.emplace(path_key(chart_path),c).second) throw std::runtime_error("API_DUPLICATE_CHART");
-                write(chart_path,preview);
+                write(staging/folder.id/(c.id+".tja"),preview);
+                unique.insert(c.id);
+                folder.count++;
             }
         }
+        fs::create_directories(previous.parent_path());
+        fs::remove_all(previous);
         {
             std::lock_guard lock(impl->mutex);
-            impl->charts.insert(charts.begin(),charts.end());
-            impl->categories.at(key).loaded=true;
+            // Prepare allocations before swapping directories so exceptions
+            // cannot leave the path registry pointing at another snapshot.
+            auto next_charts=impl->charts;
+            for(auto it=next_charts.begin();it!=next_charts.end();) {
+                if(it->second.server==e->id && it->first.starts_with(path_key(path)+"/")) it=next_charts.erase(it);
+                else ++it;
+            }
+            next_charts.insert(charts.begin(),charts.end());
+            fs::rename(path,previous);
+            try { fs::rename(staging,path); }
+            catch(...) { fs::rename(previous,path); throw; }
+            impl->charts.swap(next_charts);
+            for(const auto& folder:folders) impl->categories.at(path_key(path/folder.id)).count=folder.count;
+            e->chart_count=static_cast<int>(unique.size());
             impl->revision++;
         }
-        impl->status(e->config.name+": "+folder.id+" — "+std::to_string(charts.size())+" songs loaded");
+        std::error_code ignored;
+        fs::remove_all(previous,ignored);
+        impl->status(e->config.name+": "+std::to_string(unique.size())+" songs refreshed");
         return true;
     } catch(const std::exception& err) {
-        // Never leave partial song lists visible after a failed response.
-        std::error_code ec;
-        for(fs::directory_iterator it(path,ec),end; !ec&&it!=end; it.increment(ec)) {
-            if(it->path().filename()!="box.def") { std::error_code ignored; fs::remove(it->path(),ignored); }
-        }
-        impl->status(e->config.name+": "+folder.id+" failed ("+err.what()+"); reopen to retry");
+        std::error_code ignored;
+        fs::remove_all(staging,ignored);
+        impl->status(e->config.name+": refresh failed ("+err.what()+"); reopen server to retry");
         throw;
     }
 }

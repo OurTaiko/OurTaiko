@@ -37,7 +37,7 @@ void SongSelectScreen::on_screen_start() {
 
     indicator = std::make_unique<Indicator>(Indicator::State::SELECT);
     song_num = std::make_unique<SongNum>(global_data.songs_played + 1);
-    select_timer = std::make_unique<Timer>(100, get_current_ms(), [this]() { player->select_song(); });
+    select_timer = std::make_unique<Timer>(100, get_current_ms(), [this]() { if(!navigator.is_server_loading()) player->select_song(); });
     diff_select_timer = nullptr;
     join_request_ms = -1.0;
 }
@@ -108,6 +108,7 @@ void SongSelectScreen::handle_input_search() {
 }
 
 std::optional<Screens> SongSelectScreen::poll_second_player_join(double current_ms) {
+    if(navigator.is_server_loading()) return std::nullopt;
     static constexpr double JOIN_WAIT_MS = 1.5 * 1000.0;
     if (join_request_ms >= 0.0) {
         if (current_ms - join_request_ms < JOIN_WAIT_MS) return std::nullopt;
@@ -140,7 +141,7 @@ std::optional<Screens> SongSelectScreen::poll_second_player_join(double current_
 }
 
 void SongSelectScreen::handle_input(double current_ms) {
-    if (navigator.is_processing || navigator.inline_streaming) {
+    if (navigator.is_server_loading() || navigator.is_processing || navigator.inline_streaming) {
         clear_input_buffers();
         return;
     }
@@ -169,7 +170,7 @@ std::optional<Screens> SongSelectScreen::update() {
     diff_fade_out->update(current_time);
     script->update(current_time);
     if (join_request_ms < 0.0) {
-        select_timer->update(current_time);
+        select_timer->update(current_time, navigator.is_server_loading());
         if (diff_select_timer != nullptr) diff_select_timer->update(current_time);
     }
     indicator->update(current_time);
@@ -270,6 +271,10 @@ void SongSelectScreen::draw_overlays() {
     auto cloud_status = fanmade::client().status();
     if (!cloud_status.empty()) ray::DrawText(cloud_status.c_str(), 20, 20, 20, ray::WHITE);
     script->draw_overlays(state);
+    if(navigator.is_server_loading()) {
+        ray::DrawRectangle(0,tex.screen_height/2-35,tex.screen_width,90,ray::Fade(ray::BLACK,0.85f));
+        ray::DrawText("Refreshing category song lists...",40,tex.screen_height/2-20,24,ray::WHITE);
+    }
 
     tex.draw_texture(GLOBAL::SONG_NUM_BG, {.x=-(song_num->width-127), .x2=(song_num->width-127), .fade=0.75});
     song_num->draw(tex.skin_config[SC::SONG_NUM].x-song_num->width, tex.skin_config[SC::SONG_NUM].y, 1.0);

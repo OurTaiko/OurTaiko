@@ -4,6 +4,7 @@
 #include "../../../libs/global_data.h"
 
 class FolderBox : public BaseBox {
+    int rendered_count = -2;
 public:
     int tja_count;
     bool is_osu_folder = false;

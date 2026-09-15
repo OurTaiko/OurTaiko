@@ -82,6 +82,7 @@ private:
     std::queue<std::unique_ptr<BaseBox>> pending_boxes;
     std::queue<std::unique_ptr<BaseBox>> pending_inline_boxes;
     std::atomic<bool>        loading_complete{false};
+    std::atomic<bool>        server_loading{false};
     std::atomic<bool>        abort_loading{false};
 
     std::optional<fs::path>  reopen_folder_path;
@@ -163,6 +164,8 @@ public:
     // themselves are skin-independent, so is_preloaded is left alone); the
     // next init() then takes its already-existing full-rebuild path.
     void reset_for_skin_reload();
+    void prepare_catalog_refresh();
+    bool is_server_loading() const { return server_loading.load(); }
     void add_to_recent(const SongBox* song);
     void toggle_favorite(SongBox* song);
     void refresh_scores();

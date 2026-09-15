@@ -199,6 +199,16 @@ void Navigator::reset_for_skin_reload() {
     is_init = false;
 }
 
+void Navigator::prepare_catalog_refresh() {
+    join_loader();
+    wait_for_song_files();
+    std::lock_guard lock(pending_mutex);
+    std::queue<std::unique_ptr<BaseBox>>().swap(pending_boxes);
+    std::queue<std::unique_ptr<BaseBox>>().swap(pending_inline_boxes);
+    is_init=false;
+    FolderBox::invalidate_scan_cache();
+}
+
 void Navigator::preload(std::vector<fs::path> songs_paths) {
     if (is_preloaded) return;
     root_paths = songs_paths;
@@ -265,6 +275,7 @@ void Navigator::preload(std::vector<fs::path> songs_paths) {
 }
 
 void Navigator::init(std::vector<fs::path> songs_paths) {
+    root_paths=songs_paths;
     emit_wheel_event(WHEEL_EVENT_SCENE_ENTRY);
     if (is_init && hide_dan != built_hide_dan) {
         join_loader();
@@ -584,12 +595,13 @@ void Navigator::parse_song_list(const fs::path& path, BoxDef box_def, bool inlin
 }
 
 void Navigator::load_current_directory_async(const fs::path path) {
+    struct Finish { std::atomic<bool>& flag; ~Finish() { flag=false; } } finish{server_loading};
     BoxDef box_def = parse_box_def(path);
 
     setup_back_box(path, true);
     try { fanmade::client().load_directory(path); }
     catch (const std::exception& e) {
-        spdlog::warn("Category load failed: {}", e.what());
+        spdlog::warn("Server catalog refresh failed: {}", e.what());
         loading_complete = true;
         current_path = path;
         return;
@@ -1077,8 +1089,7 @@ void Navigator::scan_song_tree(const fs::path& path, std::vector<fs::path>& song
 void Navigator::start_inline_prefetch(const fs::path& path) {
     join_prefetch();
     prefetch.reset();
-    // Remote folders are empty until opened; prefetching would cache an empty scan.
-    if (fanmade::client().is_category(path)) return;
+    if (fanmade::client().is_server(path)) return;
     prefetch = std::make_unique<InlinePrefetch>();
     prefetch->path = path;
     InlinePrefetch* pf = prefetch.get();
@@ -1093,12 +1104,6 @@ void Navigator::join_prefetch() {
 }
 
 void Navigator::load_songs_inline_async(const fs::path path, BoxDef box_def) {
-    try { fanmade::client().load_directory(path); }
-    catch (const std::exception& e) {
-        spdlog::warn("Category load failed: {}", e.what());
-        loading_complete = true;
-        return;
-    }
     if (load_gen4_genre_songs(path, box_def)) {
         loading_complete = true;
         return;
@@ -1355,7 +1360,7 @@ void Navigator::begin_inline_load() {
 
 void Navigator::load_current_directory(const fs::path path) {
     BoxDef box_def = parse_box_def(path);
-    bool has_children = has_child_folders(path);
+    bool has_children = fanmade::client().is_server(path) || has_child_folders(path);
 
 #ifdef SUPPORT_FUMEN
     bool own_path_is_arcade_root = !gen4::find_data_root(path).empty() || !gen3::find_data_root(path).empty();
@@ -1426,6 +1431,7 @@ void Navigator::load_current_directory(const fs::path path) {
 
     join_loader();
 #ifndef __EMSCRIPTEN__
+    server_loading=fanmade::client().is_server(path);
     loader_thread = std::thread(&Navigator::load_current_directory_async, this, path);
 #else
     load_current_directory_async(path);

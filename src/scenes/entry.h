@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../libs/screen.h"
+#include <future>
 #include "../objects/entry/box_manager.h"
 #include "../objects/entry/entry_script.h"
 #include "../objects/entry/player.h"
@@ -20,6 +21,8 @@ enum class EntryState {
 
 class EntryScreen : public Screen {
 private:
+    std::future<void> catalog_refresh;
+    bool catalog_refresh_started = false;
     int side;
     bool is_2p;
     std::unique_ptr<BoxManager> box_manager;

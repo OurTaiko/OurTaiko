@@ -54,8 +54,11 @@ public:
     void bootstrap(const std::vector<ServerConfig>& servers, const fs::path& cache);
     std::vector<fs::path> song_paths(std::vector<fs::path> local) const;
     bool is_category(const fs::path& path) const;
-    // Called by the navigator worker after opening a category. No HTTP during
-    // root enumeration. Throws on failure so reopening can retry.
+    bool is_server(const fs::path& path) const;
+    // -1 means this server has not supplied a count yet; nullopt is a local path.
+    std::optional<int> folder_count(const fs::path& path) const;
+    // Refresh every category atomically when a server folder opens. Category
+    // folders are already materialized and never make HTTP requests.
     bool load_directory(const fs::path& path);
     std::optional<Chart> chart(const fs::path& path) const;
     std::optional<Score> best(const fs::path& path, int difficulty) const;

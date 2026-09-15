@@ -65,7 +65,7 @@ class Handler(BaseHTTPRequestHandler):
     def handle_request(self):
         path=urlsplit(self.path).path
         variant=''
-        for prefix in ('missing-combo', 'null-combo'):
+        for prefix in ('missing-combo', 'null-combo', 'refresh'):
             if path.startswith('/'+prefix+'/'):
                 variant=prefix
                 path=path[len(prefix)+1:]
@@ -73,7 +73,7 @@ class Handler(BaseHTTPRequestHandler):
         endpoint='second' if path.startswith('/second/') else 'first'
         if endpoint=='second': path=path[len('/second'):]
         with lock:
-            counts[endpoint+':'+path]+=1
+            counts[(variant or endpoint)+':'+path]+=1
             if self.path.startswith('http://'): counts['proxy']+=1
         if self.headers.get('Origin') or self.headers.get('Cookie'):
             return self.reply({'code':'UNEXPECTED_BROWSER_AUTH'},400)
@@ -88,15 +88,25 @@ class Handler(BaseHTTPRequestHandler):
             scores=[score(endpoint),score(endpoint,id='old',versionId='d'*32,score=9999999)]
             if variant=='missing-combo': del scores[0]['max_combo']
             if variant=='null-combo': scores[0]['max_combo']=None
-            return self.reply({'categories':[
-                {'id':'game','title':'Game','genre':'GAME'},
-                {'id':'pop','title':'Pop','genre':'J-POP'},
-                {'id':'variety','title':'Variety','genre':'VARIETY'}], 'scores':scores})
+            if variant=='refresh': time.sleep(0.15)
+            categories=[
+                {'id':'game','title':'Game','genre':'GAME','chartCount':1},
+                {'id':'pop','title':'Pop','genre':'J-POP','chartCount':1},
+                {'id':'variety','title':'Variety','genre':'VARIETY','chartCount':0}]
+            if variant=='refresh' and counts['refresh:'+path]>1:
+                categories.append({'id':'classic','title':'Classic','genre':'CLASSICAL','chartCount':0})
+            return self.reply({'categories':categories,'chartCount':1,'scores':scores})
         if path.startswith('/api/v1/game/categories/'):
             category=path.split('/')[-2]
             if category=='variety':
-                if counts[endpoint+':'+path]==1: return self.reply({},503)
                 return self.reply({'categoryId':category,'charts':[]})
+            if variant=='refresh':
+                attempt=counts['refresh:/api/v1/game/categories/game/charts']
+                if category=='pop' and attempt==2: return self.reply({},503)
+                if attempt>=2:
+                    changed=chart(endpoint); changed['id']='2'*32
+                    songs=[chart(endpoint),changed] if category=='game' else []
+                    return self.reply({'categoryId':category,'charts':songs})
             return self.reply({'categoryId':category,'charts':[chart(endpoint)]})
         if path=='/api/v1/charts/'+SONG: return self.reply(chart(endpoint))
         if path.endswith('/tja'): return self.transfer(TJA)

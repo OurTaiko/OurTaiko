@@ -87,7 +87,7 @@ std::optional<Screens> SongSelect2PScreen::update() {
     double current_time = get_current_ms();
     diff_fade_out->update(current_time);
     script->update(current_time);
-    select_timer->update(current_time);
+    select_timer->update(current_time, navigator.is_server_loading());
     if (diff_select_timer != nullptr) diff_select_timer->update(current_time);
     indicator->update(current_time);
     if (search_box) search_box->update(current_time);

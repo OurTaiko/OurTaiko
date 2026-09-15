@@ -1,9 +1,12 @@
 ﻿#include "entry.h"
 #include "../libs/input.h"
 #include "../libs/scores.h"
+#include "../libs/fanmade.h"
+#include "../objects/song_select/file_navigator/navigator.h"
 
 void EntryScreen::on_screen_start() {
     Screen::on_screen_start();
+    catalog_refresh_started = false;
     side = 1;
     is_2p = false;
     box_manager = std::make_unique<BoxManager>(global_data.entry_join_pending);
@@ -227,7 +230,7 @@ std::optional<Screens> EntryScreen::update() {
     entry_overlay.update(current_time);
     lua_entry->update(current_time);
     box_manager->update(current_time, is_2p);
-    if (!(arcade_credit() && state == EntryState::SELECT_SIDE)) {
+    if (!box_manager->is_finished() && !(arcade_credit() && state == EntryState::SELECT_SIDE)) {
         timer->update(current_time);
     }
     nameplate.update(current_time);
@@ -251,7 +254,25 @@ std::optional<Screens> EntryScreen::update() {
         if (!any_open) state = EntryState::SELECT_MODE;
     }
     if (box_manager->is_finished()) {
-        return on_screen_end(box_manager->selected_box());
+        auto target=box_manager->selected_box();
+#ifndef __EMSCRIPTEN__
+        const bool song_select=target==Screens::SONG_SELECT || target==Screens::SONG_SELECT_2P || target==Screens::PRACTICE_SELECT;
+        if(song_select) {
+            if(!catalog_refresh_started) {
+                navigator.prepare_catalog_refresh();
+                catalog_refresh_started=true;
+                auto servers=global_data.config->network.servers;
+                catalog_refresh=std::async(std::launch::async,[servers] {
+                    fanmade::client().bootstrap(servers,"cache/fanmade");
+                });
+                return std::nullopt;
+            }
+            if(catalog_refresh.wait_for(std::chrono::seconds(0))!=std::future_status::ready) return std::nullopt;
+            try { catalog_refresh.get(); }
+            catch(const std::exception& e) { spdlog::warn("Catalog refresh failed: {}",e.what()); }
+        }
+#endif
+        return on_screen_end(target);
     }
     for (auto& player : players) {
         if (player && player->is_cloud_animation_finished() &&
@@ -330,6 +351,11 @@ void EntryScreen::draw() {
 
     if (box_manager->is_finished()) {
         ray::DrawRectangle(0, 0, tex.screen_width, tex.screen_height, ray::BLACK);
+        if(catalog_refresh_started) {
+            ray::DrawText("Refreshing server categories...",40,tex.screen_height/2,24,ray::WHITE);
+            auto status=fanmade::client().status();
+            ray::DrawText(status.c_str(),40,tex.screen_height/2+40,20,ray::WHITE);
+        }
     }
 
     timer->draw();

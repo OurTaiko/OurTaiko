@@ -1,5 +1,6 @@
 #include "../../src/libs/fanmade.h"
 #include <chrono>
+#include <future>
 #include "../../src/libs/parsers/tja.h"
 #include <cstdlib>
 #include <fstream>
@@ -33,16 +34,44 @@ void parser_tests() {
     bool rejected=false; try { playable_tja("COURSE:Oni\n#START\n1,\n#END\n",c); } catch(...) { rejected=true; }
     check(rejected,"reject missing block");
 }
-void load_categories(Client& client,bool all=false) {
+void load_servers(Client& client) {
     for(const auto& server:fs::directory_iterator(client.song_paths({}).front())) {
-        for(const auto& entry:fs::directory_iterator(server.path())) {
-            auto folder=entry.path();
-            if(!fs::is_directory(folder)||(!all&&folder.filename()!="game")) continue;
-            check(client.is_category(folder),"registered nested category");
-            check(client.load_directory(folder),"load category on demand");
-            check(client.load_directory(folder),"reopen loaded category from cache");
-        }
+        check(client.is_server(server.path()),"registered server");
+        check(client.load_directory(server.path()),"server loads all categories");
+        for(const auto& entry:fs::directory_iterator(server.path())) if(fs::is_directory(entry.path()))
+            check(!client.load_directory(entry.path()),"category navigation never requests HTTP");
     }
+}
+void refresh_tests(const std::string& base,const fs::path& cache) {
+    Client client;
+    std::vector<ServerConfig> config{{"Refresh",base+"/refresh","fixture","fixture-password",""}};
+    // Slow bootstrap must not block frame-side update() behind its pump mutex.
+    auto job=std::async(std::launch::async,[&]{client.bootstrap(config,cache);});
+    int frames=0;
+    while(job.wait_for(std::chrono::milliseconds(0))!=std::future_status::ready) {
+        auto start=std::chrono::steady_clock::now(); client.update();
+        check(std::chrono::steady_clock::now()-start<std::chrono::milliseconds(100),"refresh does not block frame update");
+        ++frames; std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    job.get(); check(frames>5,"slow refresh exercised frame loop");
+    auto root=client.song_paths({}).front();
+    auto server=fs::directory_iterator(root)->path();
+    auto game=server/"game",pop=server/"pop";
+    check(client.folder_count(server)==1 && client.folder_count(game)==1,"initial counts from metadata");
+    auto old=pop/(std::string(32,'1')+".tja");
+    client.load_directory(server);
+    check(client.folder_count(server)==1 && client.folder_count(game)==1 && client.folder_count(pop)==1,"multi-category server total deduplicated");
+    check(fs::exists(old),"first snapshot visible");
+    bool failed=false;
+    try {client.load_directory(server);} catch(...) {failed=true;}
+    check(failed && fs::exists(old) && client.chart(old).has_value(),"failed refresh preserves complete old snapshot");
+    check(client.folder_count(game)==1 && client.folder_count(server)==1,"failed refresh preserves counts");
+    client.load_directory(server);
+    check(!fs::exists(old) && !client.chart(old),"removed memberships disappear from disk and registry");
+    check(client.folder_count(game)==2 && client.folder_count(pop)==0 && client.folder_count(server)==2,"reopening updates every count including zero");
+    client.bootstrap(config,cache);
+    check(client.is_category(server/"classic"),"reentering mode refreshes category list");
+    for(const auto& file:fs::recursive_directory_iterator(root)) check(file.path().extension()!=".tja","mode refresh does not preload chart lists");
 }
 int main(int argc,char** argv) {
  try {
@@ -61,22 +90,15 @@ int main(int argc,char** argv) {
             check(!invalid.online()&&invalid.status().find("API_NUMBER_INVALID")!=std::string::npos,"reject missing or null maximum combo");
         }
     }
+    if(!real) refresh_tests(base,cache/"refresh-tests");
     Client client; client.bootstrap(configs,cache);
     check(client.online(),client.status().c_str());
     auto roots=client.song_paths({}); check(roots.size()==1,"catalog root");
     for(auto& f:fs::recursive_directory_iterator(roots[0])) check(f.path().extension()!=".tja","bootstrap must not materialize any charts");
     check(!client.load_directory(roots[0]),"root listing does not fetch charts");
-    load_categories(client,real);
-    if(!real) {
-        auto empty=fs::directory_iterator(roots[0])->path()/"variety";
-        bool failed=false;
-        try { client.load_directory(empty); } catch(...) { failed=true; }
-        check(failed && client.status().find("reopen to retry")!=std::string::npos,"category failure is retryable");
-        check(client.load_directory(empty),"empty category succeeds on retry");
-        for(auto& f:fs::directory_iterator(empty)) check(f.path().extension()!=".tja","empty category has no songs");
-    }
+    load_servers(client);
     std::vector<fs::path> paths;
-    for(auto& f:fs::recursive_directory_iterator(roots[0])) if(f.path().extension()==".tja") paths.push_back(f.path());
+    for(auto& f:fs::recursive_directory_iterator(roots[0])) if(f.path().extension()==".tja" && (real||f.path().parent_path().filename()=="game")) paths.push_back(f.path());
     check(paths.size()>=(real?1u:2u),"all server catalogs");
     for(auto& path:paths) {
         auto chart=client.chart(path); check(chart.has_value(),"registered chart");
@@ -128,7 +150,7 @@ int main(int argc,char** argv) {
     check(fs::exists(playable),"TJA ready");
     if(!real) {
         auto pop=path.parent_path().parent_path()/"pop";
-        client.load_directory(pop);
+        check(!client.load_directory(pop),"category uses server snapshot");
         auto same=pop/path.filename();
         check(client.chart(same)->id==client.chart(path)->id,"one chart belongs to multiple categories");
         check(client.best(same,3)->score==client.best(path,3)->score,"cross-category score identity");
@@ -161,7 +183,7 @@ int main(int argc,char** argv) {
     if(!real) {
         Client interrupted;
         interrupted.bootstrap({configs.front()},cache/"cancel-progress");
-        load_categories(interrupted);
+        load_servers(interrupted);
         fs::path selected;
         for(auto& f:fs::recursive_directory_iterator(interrupted.song_paths({}).front()))
             if(f.path().extension()==".tja") selected=f.path();
@@ -193,7 +215,7 @@ int main(int argc,char** argv) {
         // Fixture commits the first request but returns 500. A new client must
         // replay the durable queue with the original key and recover one score.
         Client resumed; resumed.bootstrap(configs,cache);
-        load_categories(resumed);
+        load_servers(resumed);
         for(int n=0;n<100;n++) {
             resumed.update(); auto best=resumed.best(path,diff);
             if(best&&best->score==score.score) break;
