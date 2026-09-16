@@ -22,6 +22,9 @@ jobs:
         with:
           submodules: false
 
+      - name: Generate application icons
+        uses: ./.github/actions/generate-icons
+
       - name: Prepare skin dependencies
         uses: ./.github/actions/prepare-skins
         with:
@@ -90,6 +93,7 @@ jobs:
         run: |
           mkdir -p release/OurTaiko-Linux
           cp build/bin/OurTaiko release/OurTaiko-Linux/
+          cp build/bin/OurTaiko.png build/bin/install-desktop-entry.py release/OurTaiko-Linux/
           cp -r Skins release/OurTaiko-Linux/
           cp -r shader release/OurTaiko-Linux/
           cp -r Songs release/OurTaiko-Linux/
@@ -128,7 +132,7 @@ jobs:
           # Checksums — binary + updater + shader + lib
           (
             cd release/OurTaiko-Linux
-            sha256sum OurTaiko update.sh LICENSE NOTICE
+            sha256sum OurTaiko update.sh LICENSE NOTICE OurTaiko.png install-desktop-entry.py
             find shader -type f | sort | xargs sha256sum
             [ -d lib ] && find lib -type f | sort | xargs sha256sum || true
           ) > release/OurTaiko-Linux/checksums-linux.sha256
@@ -153,6 +157,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
+
+      - name: Generate application icons
+        uses: ./.github/actions/generate-icons
 
       - name: Prepare skin dependencies
         uses: ./.github/actions/prepare-skins
@@ -228,6 +235,9 @@ jobs:
         with:
           submodules: false
 
+      - name: Generate application icons
+        uses: ./.github/actions/generate-icons
+
       - name: Prepare skin dependencies
         uses: ./.github/actions/prepare-skins
         with:
@@ -272,6 +282,7 @@ jobs:
         run: |
           mkdir -p release/OurTaiko-macOS
           cp build/bin/OurTaiko release/OurTaiko-macOS/
+          cp -R build/bin/OurTaiko.app release/OurTaiko-macOS/
           cp -r Skins release/OurTaiko-macOS/
           cp -r shader release/OurTaiko-macOS/
           cp -r Songs release/OurTaiko-macOS/
@@ -291,6 +302,7 @@ jobs:
           (
             cd release/OurTaiko-macOS
             shasum -a 256 OurTaiko update.sh LICENSE NOTICE
+            find OurTaiko.app -type f | sort | xargs shasum -a 256
             find shader -type f | sort | xargs shasum -a 256
             [ -d lib ] && find lib -type f | sort | xargs shasum -a 256 || true
           ) > release/OurTaiko-macOS/checksums-macos.sha256
@@ -311,6 +323,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
+
+      - name: Generate application icons
+        uses: ./.github/actions/generate-icons
 
       - name: Prepare skin dependencies
         uses: ./.github/actions/prepare-skins
@@ -409,6 +424,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
+
+      - name: Generate application icons
+        uses: ./.github/actions/generate-icons
 
       - name: Prepare skin dependencies
         uses: ./.github/actions/prepare-skins
@@ -535,6 +553,9 @@ jobs:
 
       - name: Package release assets
         run: |
+          # Artifact downloads normalize permissions; restore executable launchers.
+          chmod +x linux/OurTaiko linux/update.sh macos/OurTaiko macos/update.sh \
+            macos/OurTaiko.app/Contents/MacOS/OurTaiko
           # Full zips for manual download
           (cd linux   && zip -r ../OurTaiko-Linux.zip .)
           (cd windows && zip -r ../OurTaiko-Windows.zip .)
@@ -549,7 +570,7 @@ jobs:
           cp ios-out/checksums-ios.sha256     ./checksums-ios.sha256
 
           # Linux update package: binary + updater + shader + lib
-          UPDATE_LINUX="OurTaiko update.sh LICENSE NOTICE shader/"
+          UPDATE_LINUX="OurTaiko update.sh LICENSE NOTICE shader/ OurTaiko.png install-desktop-entry.py"
           [ -d linux/lib ] && UPDATE_LINUX="$UPDATE_LINUX lib/"
           tar -czf update-linux.tar.gz -C linux $UPDATE_LINUX
 
@@ -561,7 +582,7 @@ jobs:
           tar -czf update-windows.tar.gz -C windows $UPDATE_WIN
 
           # macOS update package: binary + updater + shader + lib
-          UPDATE_MACOS="OurTaiko update.sh LICENSE NOTICE shader/"
+          UPDATE_MACOS="OurTaiko update.sh LICENSE NOTICE shader/ OurTaiko.app/"
           [ -d macos/lib ] && UPDATE_MACOS="$UPDATE_MACOS lib/"
           tar -czf update-macos.tar.gz -C macos $UPDATE_MACOS
 

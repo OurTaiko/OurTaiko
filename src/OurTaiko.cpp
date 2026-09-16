@@ -19,6 +19,10 @@
 #include "libs/script.h"
 #include "libs/song_parser.h"
 
+#if !defined(PLATFORM_ANDROID) && !defined(OURTAIKO_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
+#include "platform/app_icon.h"
+#endif
+
 #include "scenes/dan_result.h"
 #include "scenes/dan_select.h"
 #include "scenes/entry.h"
@@ -421,6 +425,11 @@ static void run_frame() {
 }
 
 int main(int argc, char* argv[]) {
+#if !defined(PLATFORM_ANDROID) && !defined(OURTAIKO_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
+    // Match the Linux desktop entry, including compositors that choose icons by app ID.
+    SDL_SetHint(SDL_HINT_APP_ID, "org.ourtaiko.fanmade");
+    SDL_SetHint(SDL_HINT_APP_NAME, "OurTaiko");
+#endif
     spdlog::info("Starting OurTaiko");
     spdlog::info("Author: OurTaiko. Based on YataiDON by Yono (Yonokid) and contributors; GNU GPLv3. See LICENSE and NOTICE.");
     set_working_directory_to_executable();
@@ -448,6 +457,9 @@ int main(int argc, char* argv[]) {
     setup_logging(global_data.config->general.log_level);
 
     ray::InitWindow(1280, 720, "OurTaiko");
+#if !defined(PLATFORM_ANDROID) && !defined(OURTAIKO_PLATFORM_IOS) && !defined(__EMSCRIPTEN__)
+    set_app_icon();
+#endif
     load_skin();
 
     scores_manager.player_1 = global_data.config->general.player_1_id;

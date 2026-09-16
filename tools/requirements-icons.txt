@@ -1,0 +1,2 @@
+# Compatible with Python 3.9+ used by local Xcode installations.
+Pillow==11.3.0

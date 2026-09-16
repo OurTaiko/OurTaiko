@@ -17,6 +17,9 @@ jobs:
         with:
           submodules: false
 
+      - name: Generate application icons
+        uses: ./.github/actions/generate-icons
+
       - name: Prepare skin dependencies
         uses: ./.github/actions/prepare-skins
         with:
@@ -97,6 +100,7 @@ jobs:
         run: |
           mkdir -p release/OurTaiko-Linux
           cp build/bin/OurTaiko release/OurTaiko-Linux/
+          cp build/bin/OurTaiko.png build/bin/install-desktop-entry.py release/OurTaiko-Linux/
           cp -r Skins release/OurTaiko-Linux/
           cp -r shader release/OurTaiko-Linux/
           cp -r Songs release/OurTaiko-Linux/
@@ -147,6 +151,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
+
+      - name: Generate application icons
+        uses: ./.github/actions/generate-icons
 
       - name: Prepare skin dependencies
         uses: ./.github/actions/prepare-skins
@@ -211,6 +218,9 @@ jobs:
         with:
           submodules: false
 
+      - name: Generate application icons
+        uses: ./.github/actions/generate-icons
+
       - name: Prepare skin dependencies
         uses: ./.github/actions/prepare-skins
         with:
@@ -254,6 +264,7 @@ jobs:
         run: |
           mkdir -p release/OurTaiko-macOS
           cp build/bin/OurTaiko release/OurTaiko-macOS/
+          cp -R build/bin/OurTaiko.app release/OurTaiko-macOS/
           cp -r Skins release/OurTaiko-macOS/
           cp -r shader release/OurTaiko-macOS/
           cp -r Songs release/OurTaiko-macOS/

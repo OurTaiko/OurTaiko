@@ -4,6 +4,13 @@ plugins {
 
 apply from: 'game-assets.gradle'
 
+// Resource merging can run before native CMake configuration on a clean checkout.
+tasks.register('generateAppIcons', Exec) {
+    workingDir rootProject.file('..')
+    commandLine providers.gradleProperty('iconPython').getOrElse('python3'),
+        'tools/generate_icons.py', '--ensure'
+}
+
 def keystoreProps = new Properties()
 def keystoreFile = rootProject.file('keystore.properties')
 if (keystoreFile.exists()) {
@@ -60,6 +67,7 @@ android {
     androidResources { noCompress += ['zip'] }
 
     preBuild.dependsOn 'copyGameAssets'
+    preBuild.dependsOn 'generateAppIcons'
 
     applicationVariants.all { variant ->
         variant.outputs.all {

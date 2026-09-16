@@ -59,6 +59,7 @@ Download the latest release for your operating system from the [releases page](h
 
 #### Linux
 1. Run `./OurTaiko`
+2. Optionally run `python3 install-desktop-entry.py` from the extracted package to add OurTaiko and its icon to your application menu. Run it again if you move the package.
 
 #### Android
 1. Install `OurTaiko-Android.apk` (enable "install from unknown sources" if needed)
@@ -75,7 +76,7 @@ bundled resources, close the app and remove `/sdcard/OurTaiko/.game-data-install
 existing player files are preserved.
 
 #### macOS
-1. Extract `OurTaiko-macOS.zip` and run `./OurTaiko` from its directory.
+1. Extract `OurTaiko-macOS.zip` and open `OurTaiko.app`, or run `./OurTaiko` from its directory. Keep the app beside the executable and game data; it is a launcher for the portable package.
 
 #### iOS
 1. Download `OurTaiko-iOS-unsigned.ipa`, sign it for your device, and install it (see the [iOS guide](ios/README.md)).

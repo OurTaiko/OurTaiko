@@ -1,0 +1,13 @@
+name: Generate application icons
+description: Build native icon assets from the tracked logo on every CI platform
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install icon tools and generate assets
+      shell: bash
+      run: |
+        python -m pip install -r tools/requirements-icons.txt
+        python tools/generate_icons.py --ensure

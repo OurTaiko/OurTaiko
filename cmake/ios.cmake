@@ -23,6 +23,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
   MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
   XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${IOS_BUNDLE_IDENTIFIER}"
   XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+  XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
   XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic"
   XCODE_ATTRIBUTE_ENABLE_BITCODE "NO"
   XCODE_GENERATE_SCHEME TRUE)
@@ -51,6 +52,11 @@ add_dependencies(${PROJECT_NAME} ios_assets)
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/ios-resources/GameData")
 target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_BINARY_DIR}/ios-resources/GameData")
 set_source_files_properties("${CMAKE_BINARY_DIR}/ios-resources/GameData" PROPERTIES
+  MACOSX_PACKAGE_LOCATION Resources)
+
+# Xcode compiles the catalog and merges the AppIcon metadata into Info.plist.
+target_sources(${PROJECT_NAME} PRIVATE "${CMAKE_SOURCE_DIR}/ios/Assets.xcassets")
+set_source_files_properties("${CMAKE_SOURCE_DIR}/ios/Assets.xcassets" PROPERTIES
   MACOSX_PACKAGE_LOCATION Resources)
 
 # Settings.app reads this bundle directly from the signed app, not Documents.

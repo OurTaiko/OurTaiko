@@ -21,6 +21,12 @@ if [ -f build/bin/OurTaiko ]; then
     cp build/bin/OurTaiko ./OurTaiko
     cp build/bin/LICENSE build/bin/NOTICE .
     chmod +x ./OurTaiko
+    if [ -d build/bin/OurTaiko.app ]; then
+        cp -R build/bin/OurTaiko.app .
+    fi
+    if [ -f build/bin/OurTaiko.png ]; then
+        cp build/bin/OurTaiko.png build/bin/install-desktop-entry.py .
+    fi
     echo "Build complete! Executable is ready at ./OurTaiko"
 else
     echo "Error: Executable not found at build/bin/OurTaiko"
