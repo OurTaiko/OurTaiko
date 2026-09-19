@@ -2,17 +2,20 @@
 #include "audio.h"
 #include "texture.h"
 #include <spdlog/spdlog.h>
+#include <climits>
 
 VideoPlayer::VideoPlayer(fs::path path)
     : is_finished_arr{false, false}
 {
     if (path.extension() == ".png" || path.extension() == ".jpg") {
         texture  = ray::LoadTexture(path.string().c_str());
+        is_static = true;
         if (!ray::IsTextureValid(texture.value())) {
             spdlog::error("Failed to load static texture for video: {}", path.stem().string());
+            ray::UnloadTexture(texture.value());
+            texture.reset();
             return;
         }
-        is_static = true;
         return;
     }
 
@@ -24,17 +27,23 @@ VideoPlayer::VideoPlayer(fs::path path)
     }
     video_stream = container->streams().video(0);
     audio_stream = container->streams().audio(0);
+    if (!video_stream) {
+        spdlog::error("Video has no video stream: {}", path.string());
+        container.reset();
+        return;
+    }
 
-    audio_s = audio.load_music_stream_memory(*audio_stream, "video_player");
+    if (audio_stream) {
+        audio_s = audio.load_music_stream_memory(*audio_stream, "video_player");
+    } else {
+        is_finished_arr[1] = true; // no audio track: audio side is trivially done
+    }
 
     fps = video_stream->average_rate().value_or(0.f);
 
     duration = (container->duration() > 0)
                    ? static_cast<double>(container->duration()) / av::AVContainer::time_base()
                    : 0.0;
-
-    width  = static_cast<float>(video_stream->width());
-    height = static_cast<float>(video_stream->height());
 
     frame_count = (fps > 0.f) ? static_cast<int>(duration * fps) + 1 : 0;
 
@@ -49,6 +58,7 @@ VideoPlayer::~VideoPlayer() {
 
 void VideoPlayer::audio_manager() {
     if (is_finished_arr[1]) return;
+    if (!is_started()) return;
 
     if (!audio_started) {
         audio.play_music_stream(audio_s);
@@ -146,6 +156,8 @@ void VideoPlayer::start(double current_ms) {
     stop_decode_thread(); // no-op on first start; resets state on restart
     decode_stop.store(false);
     frame_index = 0;
+    is_finished_arr = {false, false};
+    audio_started = false;
     start_ms = current_ms;
     decode_thread = std::thread(&VideoPlayer::decode_loop, this);
 }
@@ -164,17 +176,14 @@ void VideoPlayer::update(double current_ms) {
 
     audio_manager();
 
-    if (frame_index >= frame_count) {
-        is_finished_arr[0] = true;
-        return;
-    }
-
     if (!is_started()) return;
 
     double elapsed_ms = current_ms - start_ms.value();
+    // Unknown fps/duration: drain whatever the decoder has produced and rely
+    // on decode_eof (below) to signal completion instead of a frame estimate.
     int target_frame = (frame_duration > 0.0)
         ? static_cast<int>(elapsed_ms / frame_duration)
-        : 0;
+        : INT_MAX;
 
     // Drain all due frames from the decode queue but upload only the newest;
     // intermediate catch-up frames skip the GPU entirely
@@ -199,6 +208,11 @@ void VideoPlayer::update(double current_ms) {
         std::lock_guard<std::mutex> lock(queue_mutex);
         spare_buffers.push_back(std::move(latest->bytes));
     } else if (drained_at_eof) {
+        is_finished_arr[0] = true;
+    } else if (frame_count > 0 && frame_index >= frame_count) {
+        // Sanity bound only: real completion is decode_eof + empty queue
+        // above. This just prevents playback from running forever if the
+        // fps*duration estimate is off and decode_eof never arrives.
         is_finished_arr[0] = true;
     }
 }
@@ -252,6 +266,7 @@ void VideoPlayer::stop() {
 
     if (container) {
         container->close();
+        container.reset();
     }
 
     if (texture.has_value()) {
@@ -259,6 +274,9 @@ void VideoPlayer::stop() {
         texture.reset();
     }
 
-    audio.stop_music_stream(audio_s);
-    audio.unload_music_stream(audio_s);
+    if (!audio_s.empty()) {
+        audio.stop_music_stream(audio_s);
+        audio.unload_music_stream(audio_s);
+        audio_s.clear();
+    }
 }

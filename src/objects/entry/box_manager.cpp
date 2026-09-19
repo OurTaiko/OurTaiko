@@ -4,6 +4,8 @@
 
 #include <fstream>
 
+static constexpr int ENTRY_FADE_OUT_ANIM_ID = 9;
+
 // ─── ROUND 83 (r83-dandojo-as-mode) — `Cabinet.DaniDojoFolderAvailable()` ──────
 //
 // On the cabinet 段位道場 is a MODE BOARD, appended by
@@ -33,14 +35,18 @@ static bool dan_library_available() {
     if (!global_data.config) return false;
     const auto dan_names = GENRE_MAP.find(GenreIndex::DAN);
     if (dan_names == GENRE_MAP.end()) return false;   // fail soft
-    std::error_code ec;
     for (const fs::path& root : global_data.config->paths.tja_path) {
+        std::error_code ec;
         if (!fs::is_directory(root, ec)) continue;
+        ec.clear();
         fs::directory_iterator it(root, fs::directory_options::skip_permission_denied, ec);
         if (ec) continue;
-        for (const auto& entry : it) {
-            if (!entry.is_directory(ec)) continue;
-            std::ifstream box_def(entry.path() / "box.def");
+        const fs::directory_iterator end_it;
+        for (; it != end_it; it.increment(ec)) {
+            if (ec) break;
+            std::error_code entry_ec;
+            if (!it->is_directory(entry_ec)) continue;
+            std::ifstream box_def(it->path() / "box.def");
             if (!box_def) continue;
             std::string line;
             while (std::getline(box_def, line)) {
@@ -61,12 +67,18 @@ static bool dan_library_available() {
 
 BoxManager::BoxManager(bool two_player)
     : selected_box_index(0), is_2p(two_player), costume_menu_open(false) {
+    if (!global_data.config) {
+        throw std::runtime_error("BoxManager: global_data.config not initialized");
+    }
     const std::string lang = global_data.config->general.language;
 
     dan_text      = tex.skin_text("entry_dan", lang);
     dan_available = !dan_text.empty() && dan_library_available();
 
-    fade_out = (FadeAnimation*)tex.get_animation(9);
+    fade_out = dynamic_cast<FadeAnimation*>(tex.get_animation(ENTRY_FADE_OUT_ANIM_ID));
+    if (!fade_out) {
+        throw std::runtime_error("BoxManager: animation " + std::to_string(ENTRY_FADE_OUT_ANIM_ID) + " is not a FadeAnimation");
+    }
 
     build_board_list();
 }
@@ -189,7 +201,7 @@ void BoxManager::move_left() {
         boxes[selected_box_index + 1]->move_down();
         boxes[selected_box_index]->move_down();
     } else {
-        if (selected_box_index != selected_box_index - 1) {
+        if (selected_box_index + 1 < num_boxes) {
             boxes[selected_box_index + 1]->move_right();
         }
         boxes[selected_box_index]->move_right();
@@ -217,11 +229,9 @@ void BoxManager::move_right() {
 void BoxManager::update(double current_time_ms, bool is_2p) {
     this->is_2p = is_2p;
     if (!fade_out->is_started && check_board_list_change()) change_board_list();
-    if (this->is_2p) {
-        for (int i = 0; i < num_boxes; i++) {
-            if (box_locations[i] == Screens::SONG_SELECT)
-                boxes[i]->location = Screens::SONG_SELECT_2P;
-        }
+    for (int i = 0; i < num_boxes; i++) {
+        if (box_locations[i] == Screens::SONG_SELECT)
+            boxes[i]->location = this->is_2p ? Screens::SONG_SELECT_2P : Screens::SONG_SELECT;
     }
     fade_out->update(current_time_ms);
     for (int i = 0; i < num_boxes; i++) {

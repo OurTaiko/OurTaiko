@@ -17,13 +17,16 @@ void JudgeCounter::update(int good, int ok, int bad, int drumrolls) {
 }
 
 void JudgeCounter::draw_counter(float counter, float x, float y, float margin, ray::Color color) {
+    if (!(counter >= 0.0f)) counter = 0.0f; // guards negative values and NaN ("!(NaN >= 0)" is true)
     std::string counter_str = std::to_string((int)std::round(counter));
     int counter_len = counter_str.length();
 
     for (int i = 0; i < counter_str.length(); i++) {
+        char c = counter_str[i];
+        if (c < '0' || c > '9') continue;
         tex.draw_texture(JUDGE_COUNTER::COUNTER, {
             .color = color,
-            .frame = counter_str[i] - '0',
+            .frame = c - '0',
             .x = x - (counter_len - i) * margin,
             .y = y
         });
@@ -62,7 +65,7 @@ void JudgeCounter::draw() {
 
     draw_counter(bad / (float)total_notes * 100,
                  tex.skin_config[SC::JUDGE_COUNTER_1].x,
-                 tex.skin_config[SC::JUDGE_COUNTER_4].x,
+                 tex.skin_config[SC::JUDGE_COUNTER_4].y,
                  margin, orange);
 
     draw_counter((good + ok) / (float)total_notes * 100,
@@ -82,7 +85,7 @@ void JudgeCounter::draw() {
 
     draw_counter(bad,
                  tex.skin_config[SC::JUDGE_COUNTER_2].x,
-                 tex.skin_config[SC::JUDGE_COUNTER_4].x,
+                 tex.skin_config[SC::JUDGE_COUNTER_4].y,
                  margin, white);
 
     draw_counter(drumrolls,

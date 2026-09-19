@@ -2,6 +2,10 @@
 #include "../../libs/script.h"
 
 Background::Background(PlayerNum player_num, float bpm, const std::string& scene_preset) {
+    if (!script_manager.lua) {
+        spdlog::error("Background: Lua state is not available");
+        return;
+    }
     sol::state& lua = *script_manager.lua;
 
     if (!lua["Background"].valid()) {
@@ -14,16 +18,24 @@ Background::Background(PlayerNum player_num, float bpm, const std::string& scene
         if (!result.valid()) {
             sol::error err = result;
             spdlog::error("Error loading background.lua: {}", err.what());
+            return;
         }
     }
 
-    sol::table background_class = lua["Background"];
+    sol::object bg_obj = lua["Background"];
+    if (!bg_obj.is<sol::table>()) {
+        spdlog::error("background.lua did not define a Background table");
+        return;
+    }
+    sol::table background_class = bg_obj;
     sol::protected_function new_func = background_class["new"];
 
     auto call_result = new_func(static_cast<int>(player_num), bpm, scene_preset);
     if (!call_result.valid()) {
         sol::error err = call_result;
         spdlog::error("Error calling Background.new: {}", err.what());
+    } else if (call_result.get_type() != sol::type::table) {
+        spdlog::error("Background.new did not return a table");
     } else {
         lua_object = call_result;
         fn_update        = lua_object["update"];
@@ -46,6 +58,7 @@ Background::Background(PlayerNum player_num, float bpm, const std::string& scene
 }
 
 Background::~Background() {
+    if (!lua_object.valid()) return;
     sol::optional<sol::protected_function> destroy = lua_object["destroy"];
     if (destroy) {
         auto result = destroy.value()(lua_object);
@@ -57,6 +70,7 @@ Background::~Background() {
 }
 
 void Background::update(double current_ms, float bpm) {
+    if (!fn_update.valid()) return;
     auto result = fn_update(lua_object, current_ms, bpm);
     if (!result.valid()) {
         sol::error err = result;
@@ -65,6 +79,7 @@ void Background::update(double current_ms, float bpm) {
 }
 
 void Background::handle_good(PlayerNum player_num) {
+    if (!fn_handle_good.valid()) return;
     auto result = fn_handle_good(lua_object, static_cast<int>(player_num));
     if (!result.valid()) {
         sol::error err = result;
@@ -73,6 +88,7 @@ void Background::handle_good(PlayerNum player_num) {
 }
 
 void Background::handle_ok(PlayerNum player_num) {
+    if (!fn_handle_ok.valid()) return;
     auto result = fn_handle_ok(lua_object, static_cast<int>(player_num));
     if (!result.valid()) {
         sol::error err = result;
@@ -81,6 +97,7 @@ void Background::handle_ok(PlayerNum player_num) {
 }
 
 void Background::handle_bad(PlayerNum player_num) {
+    if (!fn_handle_bad.valid()) return;
     auto result = fn_handle_bad(lua_object, static_cast<int>(player_num));
     if (!result.valid()) {
         sol::error err = result;
@@ -89,6 +106,7 @@ void Background::handle_bad(PlayerNum player_num) {
 }
 
 void Background::handle_drumroll(PlayerNum player_num) {
+    if (!fn_handle_drumroll.valid()) return;
     auto result = fn_handle_drumroll(lua_object, static_cast<int>(player_num));
     if (!result.valid()) {
         sol::error err = result;
@@ -97,6 +115,7 @@ void Background::handle_drumroll(PlayerNum player_num) {
 }
 
 void Background::handle_balloon(PlayerNum player_num) {
+    if (!fn_handle_balloon.valid()) return;
     auto result = fn_handle_balloon(lua_object, static_cast<int>(player_num));
     if (!result.valid()) {
         sol::error err = result;
@@ -106,6 +125,7 @@ void Background::handle_balloon(PlayerNum player_num) {
 
 void Background::handle_gauge(PlayerNum player_num, float progress, bool is_clear, bool is_rainbow,
                               float clear_progress, float flash) {
+    if (!fn_handle_gauge.valid()) return;
     auto result = fn_handle_gauge(lua_object, static_cast<int>(player_num), progress, is_clear, is_rainbow,
                                   clear_progress, flash);
     if (!result.valid()) {
@@ -169,6 +189,7 @@ void Background::handle_skip(PlayerNum player_num, const sol::table& state) {
 }
 
 void Background::draw_back() {
+    if (!fn_draw_back.valid()) return;
     auto result = fn_draw_back(lua_object);
     if (!result.valid()) {
         sol::error err = result;
@@ -177,6 +198,7 @@ void Background::draw_back() {
 }
 
 void Background::draw_fore() {
+    if (!fn_draw_fore.valid()) return;
     auto result = fn_draw_fore(lua_object);
     if (!result.valid()) {
         sol::error err = result;

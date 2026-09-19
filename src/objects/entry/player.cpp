@@ -56,8 +56,10 @@ void EntryPlayer::draw_drum() {
     auto pos_opt = call_r<sol::table>(fn_draw_drum_back, "EntryPlayer:draw_drum_back");
     if (pos_opt) {
         sol::table& pos = pos_opt.value();
+        sol::optional<float> x = pos[1];
+        sol::optional<float> y = pos[2];
         sol::optional<float> s = pos[3];
-        chara->draw(pos.get<float>(1), pos.get<float>(2), s.value_or(1.0f));
+        chara->draw(x.value_or(0.0f), y.value_or(0.0f), s.value_or(1.0f));
     }
     call(fn_draw_drum_front, "EntryPlayer:draw_drum_front");
 }
@@ -132,19 +134,28 @@ void EntryPlayer::handle_input() {
         if (costume_menu->confirmed) {
             int player_id = get_player_id(player_num);
             if (auto pd = scores_manager.get_player_data(player_id)) {
-                if (costume_menu->get_pick_stage() == CostumePickStage::BODY) {
-                    pd->chara_head_index = costume_menu->get_picked_head_id();
-                    pd->chara_body_index = std::stoi(costume_menu->get_costume_name());
-                    pd->chara_is_costume = false;
-                } else {
-                    pd->chara_cos_index = std::stoi(costume_menu->get_costume_name());
-                    pd->chara_is_costume = true;
+                bool parsed = true;
+                try {
+                    if (costume_menu->get_pick_stage() == CostumePickStage::BODY) {
+                        pd->chara_head_index = costume_menu->get_picked_head_id();
+                        pd->chara_body_index = std::stoi(costume_menu->get_costume_name());
+                        pd->chara_is_costume = false;
+                    } else {
+                        pd->chara_cos_index = std::stoi(costume_menu->get_costume_name());
+                        pd->chara_is_costume = true;
+                    }
+                } catch (const std::exception& e) {
+                    spdlog::error("costume_save: invalid costume name '{}': {}", costume_menu->get_costume_name(), e.what());
+                    parsed = false;
                 }
-                scores_manager.save_player_data(*pd);
-                spdlog::info("costume_save: player_id={} is_costume={} head={} body={} cos={}",
-                    pd->player_id, pd->chara_is_costume, pd->chara_head_index, pd->chara_body_index, pd->chara_cos_index);
+                if (parsed) {
+                    scores_manager.save_player_data(*pd);
+                    spdlog::info("costume_save: player_id={} is_costume={} head={} body={} cos={}",
+                        pd->player_id, pd->chara_is_costume, pd->chara_head_index, pd->chara_body_index, pd->chara_cos_index);
+                }
             }
             costume_menu.reset();
+            chara_index = -1;
             chara_pick_stage = CostumePickStage::NONE;
             audio.play_sound("costume_select_" + std::to_string((int)player_num) + "p", VolumePreset::VOICE);
             chara->set_anim(AnimIndex::DON_BALLOON_SUCCESS);

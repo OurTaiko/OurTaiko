@@ -5,10 +5,19 @@
 #include "script.h"
 #include "text.h"
 #include "audio.h"
+#include <spdlog/spdlog.h>
 
 GlobalData global_data;
 
 void load_skin() {
+    if (!global_data.config) {
+        spdlog::error("load_skin() called before config was initialized");
+        return;
+    }
+    // load_skin() is not idempotent on its own: unload any previously loaded
+    // skin's textures/scripts/font/audio device first so a reload can't leak
+    // or re-init on top of live handles.
+    unload_skin();
     ensure_skin_extracted(global_data.config->paths.skin.string());
     fs::path root_skin_path = fs::path("Skins") / global_data.config->paths.skin;
     set_skin_graphics_path(root_skin_path / "Graphics");
@@ -40,6 +49,8 @@ void load_skin() {
     if (!fs::exists(font_path) && font_family.count(lang))
         font_path = resolve_skin_path("Graphics/font_" + font_family.at(lang) + ".ttf");
     if (!fs::exists(font_path)) font_path = resolve_skin_path("Graphics/font.ttf");
+    if (!fs::exists(font_path))
+        spdlog::error("No skin font found (tried font_{}.ttf and font.ttf) in {}", lang, root_skin_path.string());
     font_manager.init(font_path);
     audio.init_audio_device(root_skin_path / "Sounds", global_data.config->audio, global_data.config->volume);
 }
@@ -60,6 +71,10 @@ void reset_session() {
 }
 
 int get_player_id(PlayerNum player_num) {
+    if (!global_data.config) {
+        spdlog::error("get_player_id() called before config was initialized");
+        return 0;
+    }
     return (player_num == global_data.first_login_player)
         ? global_data.config->general.player_1_id
         : global_data.config->general.player_2_id;

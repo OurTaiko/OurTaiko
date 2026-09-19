@@ -162,7 +162,14 @@ Screens check_args(int argc, char* argv[]) {
         std::filesystem::path abs = std::filesystem::absolute(path, abs_ec);
         if (!abs_ec) path = abs;
     }
-    SongParser tja(path);
+    SongParser tja = [&]() -> SongParser {
+        try {
+            return SongParser(path);
+        } catch (const std::exception& e) {
+            std::cerr << "Error: Failed to parse song file: " << e.what() << "\n";
+            exit_now(1);
+        }
+    }();
 
     int selected_difficulty;
     if (difficulty.has_value()) {
@@ -250,8 +257,9 @@ static void populate_screens(std::unordered_map<Screens, std::unique_ptr<Screen>
 
 void drop_other_screens_for_skin_reload() {
     if (!g_loop) return;
-    for (auto& [key, ptr] : g_loop->screens) {
-        if (key != g_loop->current_screen) ptr.reset();
+    for (auto it = g_loop->screens.begin(); it != g_loop->screens.end(); ) {
+        if (it->first != g_loop->current_screen) it = g_loop->screens.erase(it);
+        else ++it;
     }
 }
 
@@ -318,7 +326,26 @@ static void run_frame() {
     ray::BeginMode2D(L.camera);
     ray::BeginBlendMode(ray::BLEND_CUSTOM_SEPARATE);
 
-    Screen* screen = L.screens[L.current_screen].get();
+    auto screen_it = L.screens.find(L.current_screen);
+    Screen* screen = (screen_it != L.screens.end()) ? screen_it->second.get() : nullptr;
+    if (!screen) {
+        static Screens last_logged_screen = L.current_screen;
+        static double last_log_ms = -1e9;
+        if (L.current_screen != last_logged_screen || g_frame_ms - last_log_ms > 1000.0) {
+            spdlog::error("Active screen {} is not available, attempting recovery", L.current_screen);
+            last_logged_screen = L.current_screen;
+            last_log_ms = g_frame_ms;
+        }
+        populate_screens(L.screens);
+        screen_it = L.screens.find(L.current_screen);
+        screen = (screen_it != L.screens.end()) ? screen_it->second.get() : nullptr;
+    }
+    if (!screen) {
+        ray::EndBlendMode();
+        ray::EndMode2D();
+        ray::EndDrawing();
+        return;
+    }
 
     fanmade::client().update();
     std::optional<Screens> next_screen = screen->update();
@@ -348,23 +375,25 @@ static void run_frame() {
         global_data.previous_screen = global_data.current_screen;
         L.current_screen = next_screen.value();
         global_data.current_screen = screens_to_string(L.current_screen);
-        global_data.input_locked = 0;
+        reset_input_lock();
     }
 
     if (global_data.config->general.touch_input) {
         // Settings reloads global_tex and destroys its animations. Resolve the
         // current animation each frame instead of retaining a pointer across reloads.
         auto* touch_drum_resize = static_cast<TextureResizeAnimation*>(global_tex.get_animation(66));
-        if (!touch_drum_resize->isStarted()) touch_drum_resize->start();
-        if (touch_drum_pressed.exchange(false, std::memory_order_relaxed))
-            touch_drum_resize->restart();
-        touch_drum_resize->update(get_current_ms());
-        const float scale = (float)touch_drum_resize->attribute;
-        float y_fix = 0.0f;
-        auto drum_it = global_tex.textures.find(OVERLAY::TOUCH_DRUM);
-        if (drum_it != global_tex.textures.end())
-            y_fix = drum_it->second->height * 0.5f * (1.0f - scale);
-        global_tex.draw_texture(OVERLAY::TOUCH_DRUM, {.scale=scale, .center=true, .y=y_fix, .fade=0.5f});
+        if (touch_drum_resize) {
+            if (!touch_drum_resize->isStarted()) touch_drum_resize->start();
+            if (touch_drum_pressed.exchange(false, std::memory_order_relaxed))
+                touch_drum_resize->restart();
+            touch_drum_resize->update(get_current_ms());
+            const float scale = (float)touch_drum_resize->attribute;
+            float y_fix = 0.0f;
+            auto drum_it = global_tex.textures.find(OVERLAY::TOUCH_DRUM);
+            if (drum_it != global_tex.textures.end())
+                y_fix = drum_it->second->height * 0.5f * (1.0f - scale);
+            global_tex.draw_texture(OVERLAY::TOUCH_DRUM, {.scale=scale, .center=true, .y=y_fix, .fade=0.5f});
+        }
     }
 
     if (global_data.config->general.fps_counter) {
@@ -434,6 +463,7 @@ int main(int argc, char* argv[]) {
     spdlog::info("Author: OurTaiko. Based on YataiDON by Yono (Yonokid) and contributors; GNU GPLv3. See LICENSE and NOTICE.");
     set_working_directory_to_executable();
     global_data.config = new Config(get_config());
+    Screens initial_screen = check_args(argc, argv);
     init_scores_manager(global_data.config->general.score_method == ScoreMethod::GEN3);
     unsigned int flags = ray::FLAG_WINDOW_RESIZABLE;
     if (global_data.config->video.vsync) {
@@ -469,8 +499,6 @@ int main(int argc, char* argv[]) {
     if (auto pd = scores_manager.get_player_data(scores_manager.player_2))
         scores_manager.player_2_data = *pd;
 
-    Screens initial_screen = check_args(argc, argv);
-
     double target_fps = global_data.config->video.target_fps;
     if (target_fps != -1) {
         spdlog::info("Target FPS set to {}", target_fps);
@@ -481,7 +509,9 @@ int main(int argc, char* argv[]) {
 
     L.current_screen     = initial_screen;
     global_data.current_screen = screens_to_string(initial_screen);
-    L.target_duration    = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / target_fps));
+    L.target_duration    = (target_fps > 0.0)
+        ? std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / target_fps))
+        : std::chrono::steady_clock::duration::zero();
 
     populate_screens(L.screens);
 

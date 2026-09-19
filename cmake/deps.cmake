@@ -21,7 +21,7 @@ if(ANDROID OR IOS OR EMSCRIPTEN)
     include(${CMAKE_CURRENT_LIST_DIR}/ios_audio.cmake)
   endif()
 else()
-  find_package(SDL3 QUIET CONFIG REQUIRED)
+  find_package(SDL3 QUIET CONFIG)
   if(SDL3_FOUND)
     message(STATUS "Using system SDL3")
   else()
@@ -328,7 +328,7 @@ if(WIN32)
   foreach(_lib avformat avcodec avutil swscale swresample)
     set(_libfile "${FFMPEG_LIB_DIR}/lib${_lib}.dll.a")
     if(NOT EXISTS "${_libfile}")
-      message(FATAL_ERROR "FFmpeg lib not found: ${_libfile}")
+      set(_libfile "${FFMPEG_LIB_DIR}/${_lib}.lib")
     endif()
     add_library(FFmpeg::${_lib} SHARED IMPORTED)
     set_target_properties(FFmpeg::${_lib} PROPERTIES
@@ -483,6 +483,17 @@ if(FANMADE_NETWORK)
   )
   FetchContent_MakeAvailable(cpr)
 endif()
+
+# miniz (ZIP reading, used for .osz extraction)
+message(STATUS "Fetching miniz...")
+FetchContent_Declare(
+    miniz
+    GIT_REPOSITORY https://github.com/richgel999/miniz.git
+    GIT_TAG        3.0.0
+    GIT_SHALLOW    TRUE
+    PATCH_COMMAND ${CMAKE_COMMAND} -DPATCH_FILE=CMakeLists.txt -DOLD_VERSION=3.0 -P ${CMAKE_CURRENT_LIST_DIR}/patch_min_cmake_version.cmake
+)
+FetchContent_MakeAvailable(miniz)
 
 # RtAudio
 if(EMSCRIPTEN)

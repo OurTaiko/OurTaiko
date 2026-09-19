@@ -1,5 +1,4 @@
 #include "animation.h"
-#include "global_data.h"
 #include "rapidjson/error/en.h"
 #include <algorithm>
 #include <cmath>
@@ -7,38 +6,55 @@
 
 using std::runtime_error;
 
+namespace {
+    int input_lock_count = 0;
+}
+
+bool is_input_locked() {
+    return input_lock_count > 0;
+}
+
+void reset_input_lock() {
+    input_lock_count = 0;
+}
+
 BaseAnimation::BaseAnimation(double duration, double delay, bool loop, bool lock_input)
     : duration(duration), delay(delay), delay_saved(delay),
       start_ms(get_current_ms()), is_finished(false), is_started(false),
       is_reversing(false), unlocked(false), loop(loop),
       lock_input(lock_input), attribute(0) {
-          if (loop) is_started = true;
+          if (loop) {
+              is_started = true;
+              restart();
+          }
       }
 
-double BaseAnimation::easeIn(double progress, const std::string &ease_type) {
-  if (ease_type == "quadratic") {
-    return progress * progress;
-  } else if (ease_type == "cubic") {
-    return progress * progress * progress;
-  } else if (ease_type == "exponential") {
-    return progress == 0 ? 0 : std::pow(2, 10 * (progress - 1));
+double BaseAnimation::easeIn(double progress, EaseType ease_type) {
+  switch (ease_type) {
+    case EaseType::Quadratic:
+      return progress * progress;
+    case EaseType::Cubic:
+      return progress * progress * progress;
+    case EaseType::Exponential:
+      return progress == 0 ? 0 : std::pow(2, 10 * (progress - 1));
   }
   return progress;
 }
 
-double BaseAnimation::easeOut(double progress, const std::string& ease_type) {
-    if (ease_type == "quadratic") {
+double BaseAnimation::easeOut(double progress, EaseType ease_type) {
+    switch (ease_type) {
+      case EaseType::Quadratic:
         return progress * (2 - progress);
-    } else if (ease_type == "cubic") {
+      case EaseType::Cubic:
         return 1 - std::pow(1 - progress, 3);
-    } else if (ease_type == "exponential") {
+      case EaseType::Exponential:
         return progress == 1 ? 1 : 1 - std::pow(2, -10 * progress);
     }
     return progress;
 }
 
-double BaseAnimation::applyEasing(double progress, const std::optional<std::string>& ease_in_opt,
-                  const std::optional<std::string>& ease_out_opt) {
+double BaseAnimation::applyEasing(double progress, const std::optional<EaseType>& ease_in_opt,
+                  const std::optional<EaseType>& ease_out_opt) {
     if (ease_in_opt.has_value()) {
         return easeIn(progress, ease_in_opt.value());
     } else if (ease_out_opt.has_value()) {
@@ -50,7 +66,7 @@ double BaseAnimation::applyEasing(double progress, const std::optional<std::stri
 void BaseAnimation::update(double current_time_ms) {
     if (lock_input && is_finished && !unlocked) {
         unlocked = true;
-        global_data.input_locked--;
+        input_lock_count--;
     }
     if (loop && is_finished) {
         restart();
@@ -60,10 +76,13 @@ void BaseAnimation::update(double current_time_ms) {
 void BaseAnimation::restart() {
     start_ms = get_current_ms();
     is_finished = false;
+    is_reversing = false;
     delay = delay_saved;
-    unlocked = false;
-    if (lock_input) {
-        global_data.input_locked++;
+    if (is_started) {
+        unlocked = false;
+        if (lock_input) {
+            input_lock_count++;
+        }
     }
 }
 
@@ -73,16 +92,19 @@ void BaseAnimation::start() {
 }
 
 void BaseAnimation::pause() {
+    if (!is_started) return;
     is_started = false;
-    if (lock_input) {
-        global_data.input_locked--;
+    if (lock_input && !unlocked) {
+        unlocked = true;
+        input_lock_count--;
     }
 }
 
 void BaseAnimation::unpause() {
     is_started = true;
-    if (lock_input) {
-        global_data.input_locked++;
+    if (lock_input && unlocked) {
+        unlocked = false;
+        input_lock_count++;
     }
 }
 
@@ -93,8 +115,8 @@ void BaseAnimation::reset() {
 
 FadeAnimation::FadeAnimation(double duration, double initial_opacity, bool loop,
               bool lock_input, double final_opacity, double delay,
-              std::optional<std::string> ease_in,
-              std::optional<std::string> ease_out,
+              std::optional<EaseType> ease_in,
+              std::optional<EaseType> ease_out,
               std::optional<double> reverse_delay)
     : BaseAnimation(duration, delay, loop, lock_input),
       initial_opacity(initial_opacity), final_opacity(final_opacity),
@@ -151,8 +173,8 @@ std::unique_ptr<BaseAnimation> FadeAnimation::copy() const {
 MoveAnimation::MoveAnimation(double duration, int total_distance, bool loop,
               bool lock_input, int start_position, double delay,
               std::optional<double> reverse_delay,
-              std::optional<std::string> ease_in,
-              std::optional<std::string> ease_out,
+              std::optional<EaseType> ease_in,
+              std::optional<EaseType> ease_out,
               std::optional<int> waypoint, double waypoint_at)
     : BaseAnimation(duration, delay, loop, lock_input),
       total_distance(total_distance), start_position(start_position),
@@ -288,8 +310,8 @@ std::unique_ptr<BaseAnimation> TextStretchAnimation::copy() const {
 TextureResizeAnimation::TextureResizeAnimation(double duration, double initial_size, bool loop,
                       bool lock_input, double final_size, double delay,
                       std::optional<double> reverse_delay,
-                      std::optional<std::string> ease_in,
-                      std::optional<std::string> ease_out)
+                      std::optional<EaseType> ease_in,
+                      std::optional<EaseType> ease_out)
     : BaseAnimation(duration, delay, loop, lock_input),
       initial_size(initial_size), final_size(final_size),
       initial_size_saved(initial_size), final_size_saved(final_size),
@@ -363,12 +385,23 @@ Value AnimationParser::resolveValue(const Value& ref_obj, std::set<int>& visited
     }
 
     int ref_id;
+    if (!ref_obj.HasMember("reference_id")) {
+        throw std::runtime_error("Reference requires 'reference_id' field");
+    }
     if (ref_obj["reference_id"].IsString()) {
-        ref_id = ref_obj["reference_id"].GetInt();
+        try {
+            ref_id = std::stoi(ref_obj["reference_id"].GetString());
+        } catch (const std::exception&) {
+            throw std::runtime_error(std::string("Invalid reference_id string: ") +
+                                     ref_obj["reference_id"].GetString());
+        }
     } else if (ref_obj["reference_id"].IsInt()) {
         ref_id = ref_obj["reference_id"].GetInt();
     } else {
         throw std::runtime_error("reference_id must be string or int");
+    }
+    if (!ref_obj["property"].IsString()) {
+        throw std::runtime_error("Reference 'property' must be a string");
     }
     std::string ref_property = ref_obj["property"].GetString();
 
@@ -422,14 +455,18 @@ Value AnimationParser::resolveValue(const Value& ref_obj, std::set<int>& visited
 
 Value AnimationParser::findRefs(int anim_id, std::set<int>& visited) {
     if (visited.find(anim_id) != visited.end()) {
-      throw runtime_error(&"Circular reference detected involving animation " [
-                          anim_id]);
+      throw runtime_error("Circular reference detected involving animation " +
+                          std::to_string(anim_id));
     }
 
     visited.insert(anim_id);
 
+    auto raw_it = raw_anims.find(anim_id);
+    if (raw_it == raw_anims.end()) {
+        throw runtime_error("Animation " + std::to_string(anim_id) + " not found");
+    }
     Value animation;
-    animation.CopyFrom(raw_anims[anim_id], *allocator);
+    animation.CopyFrom(raw_it->second, *allocator);
 
     for (auto it = animation.MemberBegin(); it != animation.MemberEnd(); ++it) {
         if (it->value.IsObject() && it->value.HasMember("reference_id")) {
@@ -444,16 +481,21 @@ Value AnimationParser::findRefs(int anim_id, std::set<int>& visited) {
 }
 
 std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& anim_obj) {
+    if (!anim_obj.HasMember("type") || !anim_obj["type"].IsString()) {
+        throw std::runtime_error("Animation requires a string 'type'");
+    }
     std::string type = anim_obj["type"].GetString();
-    // "sample" derives its natural duration from its table window, so the key
-    // is optional there; every other type keeps requiring it (the old
-    // unconditional GetDouble() threw on absence, matching this).
     double duration = 0.0;
     if (anim_obj.HasMember("duration")) {
+        if (!anim_obj["duration"].IsNumber()) {
+            throw std::runtime_error("Animation 'duration' must be numeric");
+        }
         duration = anim_obj["duration"].IsDouble() ? anim_obj["duration"].GetDouble()
-                 : anim_obj["duration"].IsInt() ? static_cast<double>(anim_obj["duration"].GetInt())
-                 : 0.0;
-    } else if (type != "sample") {
+                 : static_cast<double>(anim_obj["duration"].GetInt());
+        if (duration <= 0.0) {
+            throw std::runtime_error("Animation of type '" + type + "' requires a positive duration");
+        }
+    } else {
         throw std::runtime_error("Animation of type '" + type + "' requires duration");
     }
 
@@ -501,6 +543,15 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
         return std::nullopt;
     };
 
+    auto get_ease_opt = [&](const char* key) -> std::optional<EaseType> {
+        auto str = get_string_opt(key);
+        if (!str.has_value()) return std::nullopt;
+        if (str == "quadratic") return EaseType::Quadratic;
+        if (str == "cubic") return EaseType::Cubic;
+        if (str == "exponential") return EaseType::Exponential;
+        throw std::runtime_error("Unknown ease type: " + str.value());
+    };
+
     double delay = get_double("delay", 0.0);
     bool loop = get_bool("loop", false);
     bool lock_input = get_bool("lock_input", false);
@@ -513,8 +564,8 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             lock_input,
             get_double("final_opacity", 0.0),
             delay,
-            get_string_opt("ease_in"),
-            get_string_opt("ease_out"),
+            get_ease_opt("ease_in"),
+            get_ease_opt("ease_out"),
             get_double_opt("reverse_delay")
         );
     } else if (type == "move") {
@@ -526,8 +577,8 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             get_int("start_position", 0),
             delay,
             get_double_opt("reverse_delay"),
-            get_string_opt("ease_in"),
-            get_string_opt("ease_out"),
+            get_ease_opt("ease_in"),
+            get_ease_opt("ease_out"),
             get_int_opt("waypoint"),
             get_double("waypoint_at", 0.5)
         );
@@ -536,7 +587,9 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
         if (anim_obj.HasMember("textures") && anim_obj["textures"].IsArray()) {
             const Value& tex_array = anim_obj["textures"];
             for (SizeType i = 0; i < tex_array.Size(); i++) {
-                if (tex_array[i].IsArray() && tex_array[i].Size() == 3) {
+                if (tex_array[i].IsArray() && tex_array[i].Size() == 3 &&
+                    tex_array[i][0].IsNumber() && tex_array[i][1].IsNumber() &&
+                    tex_array[i][2].IsInt()) {
                     double start = tex_array[i][0].GetDouble();
                     double end = tex_array[i][1].GetDouble();
                     int index = tex_array[i][2].GetInt();
@@ -560,16 +613,9 @@ std::unique_ptr<BaseAnimation> AnimationParser::createAnimation(const Value& ani
             get_double("final_size", 0.0),
             delay,
             get_double_opt("reverse_delay"),
-            get_string_opt("ease_in"),
-            get_string_opt("ease_out")
+            get_ease_opt("ease_in"),
+            get_ease_opt("ease_out")
         );
-    } else if (type == "sample") {
-        // No sample-table data source exists anymore, so this always falls
-        // back (the FAIL-SOFT path the type was designed with from the start).
-        if (anim_obj.HasMember("fallback")) {
-            return createAnimation(anim_obj["fallback"]);
-        }
-        throw std::runtime_error("Animation of type 'sample' has no 'fallback' to use");
     } else {
         throw std::runtime_error("Unknown animation type: " + type);
     }
@@ -594,7 +640,13 @@ std::unordered_map<int, std::unique_ptr<BaseAnimation>> AnimationParser::parse_a
         if (!item.HasMember("type")) {
             throw std::runtime_error("Animation requires type");
         }
+        if (!item["id"].IsInt()) {
+            throw std::runtime_error("Animation 'id' must be an int");
+        }
         int id = item["id"].GetInt();
+        if (raw_anims.find(id) != raw_anims.end()) {
+            throw std::runtime_error("Duplicate animation id: " + std::to_string(id));
+        }
         Value item_copy;
         item_copy.CopyFrom(item, *allocator);
         raw_anims[id] = std::move(item_copy);
@@ -602,13 +654,22 @@ std::unordered_map<int, std::unique_ptr<BaseAnimation>> AnimationParser::parse_a
 
     std::unordered_map<int, std::unique_ptr<BaseAnimation>> anim_dict;
 
-    for (auto& [id, _] : raw_anims) {
-        std::set<int> visited;
-        Value absolute_anim = findRefs(id, visited);
+    try {
+        for (auto& [id, _] : raw_anims) {
+            std::set<int> visited;
+            Value absolute_anim = findRefs(id, visited);
 
-        auto anim = createAnimation(absolute_anim);
-        anim_dict[id] = std::move(anim);
+            auto anim = createAnimation(absolute_anim);
+            anim_dict[id] = std::move(anim);
+        }
+    } catch (...) {
+        raw_anims.clear();
+        allocator = nullptr;
+        throw;
     }
+
+    raw_anims.clear();
+    allocator = nullptr;
 
     return anim_dict;
 }

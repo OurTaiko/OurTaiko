@@ -4,29 +4,52 @@
 #include "../../libs/global_data.h"
 #include "../../libs/scores.h"
 #include "../../libs/filesystem.h"
+#include <algorithm>
 #include <fstream>
 #include <rapidjson/document.h>
 namespace ray {
 #include <raymath.h>
 }
-extern "C" { void rlSetCullFace(int mode); }
+extern "C" { void rlSetCullFace(int mode); void rlEnableBackfaceCulling(void); void rlDisableBackfaceCulling(void); void rlColorMask(bool r, bool g, bool b, bool a); }
 static constexpr int RL_CULL_FACE_FRONT = 0;
 static constexpr int RL_CULL_FACE_BACK  = 1;
 
-static void draw_model_face_last(ray::Model& model, int face_material_index, ray::Vector3 position, float scale) {
+static void draw_model_face_last(ray::Model& model, int face_material_index, const std::vector<int>& blend_materials,
+                                 const std::vector<int>& twosided_materials, ray::Vector3 position, float scale) {
     ray::Matrix matTransform = ray::MatrixMultiply(ray::MatrixScale(scale, scale, scale),
                                                      ray::MatrixTranslate(position.x, position.y, position.z));
     ray::Matrix transform = ray::MatrixMultiply(model.transform, matTransform);
+    auto is_blend = [&](int mat) { return std::find(blend_materials.begin(), blend_materials.end(), mat) != blend_materials.end(); };
+    // _CULLNONE materials are drawn two-sided, as the name asks.
+    auto draw = [&](int i) {
+        const int mat = model.meshMaterial[i];
+        const bool two_sided = std::find(twosided_materials.begin(), twosided_materials.end(), mat) != twosided_materials.end();
+        if (two_sided) rlDisableBackfaceCulling();
+        ray::DrawMesh(model.meshes[i], model.materials[mat], transform);
+        if (two_sided) rlEnableBackfaceCulling();
+    };
 
+    // 1. opaque and alpha-tested meshes
     for (int i = 0; i < model.meshCount; i++) {
-        if (model.meshMaterial[i] == face_material_index) continue;
-        ray::DrawMesh(model.meshes[i], model.materials[model.meshMaterial[i]], transform);
+        const int mat = model.meshMaterial[i];
+        if (mat == face_material_index || is_blend(mat)) continue;
+        draw(i);
     }
+    // 2. the face plane
     if (face_material_index != -1) {
         for (int i = 0; i < model.meshCount; i++) {
             if (model.meshMaterial[i] == face_material_index)
                 ray::DrawMesh(model.meshes[i], model.materials[model.meshMaterial[i]], transform);
         }
+    }
+    // 3. alpha-blended sheets (_A_AB / glTF BLEND: front hair, plates, glints) last. Drawn
+    //    before the face, their fully transparent texels still wrote depth and occluded the face
+    //    plane and the drum head behind them, so the face came out as the black hull. They keep
+    //    writing depth among themselves, as before, so a plate in front of a hair sheet stays on top.
+    for (int i = 0; i < model.meshCount; i++) {
+        const int mat = model.meshMaterial[i];
+        if (mat != face_material_index && is_blend(mat))
+            draw(i);
     }
 }
 
@@ -44,6 +67,7 @@ static ray::Matrix rotation_xyz(float ax, float ay, float az) {
 
 static void reindex_animations(ray::Model& model, ray::Model& glb_model,
                                ray::ModelAnimation* anims, int anim_count) {
+    if (!anims || anim_count <= 0 || !model.skeleton.bones || !glb_model.skeleton.bones) return;
     std::unordered_map<std::string, int> glb_bone_idx;
     for (int i = 0; i < glb_model.skeleton.boneCount; i++)
         glb_bone_idx[glb_model.skeleton.bones[i].name] = i;
@@ -52,8 +76,10 @@ static void reindex_animations(ray::Model& model, ray::Model& glb_model,
 
     for (int a = 0; a < anim_count; a++) {
         auto& anim = anims[a];
+        if (anim.keyframeCount <= 0 || !anim.keyframePoses) continue;
         ray::ModelAnimPose* new_poses =
             (ray::ModelAnimPose*)std::malloc(anim.keyframeCount * sizeof(ray::ModelAnimPose));
+        if (!new_poses) continue;
 
         for (int f = 0; f < anim.keyframeCount; f++) {
             new_poses[f] = (ray::Transform*)std::malloc(n * sizeof(ray::Transform));
@@ -80,15 +106,15 @@ static std::string name_lower(const char* s) {
 
 static std::unordered_map<std::string, int> parse_glb_material_indices(
         const std::string& path, std::vector<int>& recolor_out, int& face_out,
-        std::vector<int>& additive_out, std::vector<int>& force_opaque_out) {
+        std::vector<int>& additive_out, std::vector<int>& cutout_out, std::vector<int>& blend_out,
+        std::vector<int>& twosided_out) {
     std::unordered_map<std::string, int> result;
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) return result;
 
     uint32_t magic = 0, version = 0, total_len = 0;
-    fread(&magic,     4, 1, f);
-    fread(&version,   4, 1, f);
-    fread(&total_len, 4, 1, f);
+    if (fread(&magic, 4, 1, f) != 1 || fread(&version, 4, 1, f) != 1 ||
+        fread(&total_len, 4, 1, f) != 1) { fclose(f); return result; }
 
     if (magic != 0x46546C67u) { fclose(f); return result; }
 
@@ -98,9 +124,11 @@ static std::unordered_map<std::string, int> parse_glb_material_indices(
 
     if (chunk_type != 0x4E4F534Au) { fclose(f); return result; }
 
+    if (chunk_len == 0 || chunk_len + 20u > total_len) { fclose(f); return result; }
     std::string json(chunk_len, '\0');
-    fread(json.data(), 1, chunk_len, f);
+    const size_t read = fread(json.data(), 1, chunk_len, f);
     fclose(f);
+    if (read != chunk_len) return result;
 
     rapidjson::Document doc;
     doc.Parse(json.data(), json.size());
@@ -130,7 +158,16 @@ static std::unordered_map<std::string, int> parse_glb_material_indices(
                 additive_out.push_back(raylib_idx);
             else if (nl.find("_color_s_cus_") != std::string::npos &&
                      nl.find("_a_ab") == std::string::npos)
-                force_opaque_out.push_back(raylib_idx);
+                cutout_out.push_back(raylib_idx);   // _AT_ZERO_ / _AT_ONE_: alpha-tested, never blended
+            const bool cutout = nl.find("_color_s_cus_") != std::string::npos && nl.find("_a_ab") == std::string::npos;
+            const bool gltf_blend = materials[i].HasMember("alphaMode") && materials[i]["alphaMode"].IsString() &&
+                                    std::string(materials[i]["alphaMode"].GetString()) == "BLEND";
+            // alpha-blended: _A_AB by name, or any other glTF BLEND material that is not an
+            // alpha-tested one (e.g. a plain "lambert" glint sheet) -- drawn after the face
+            if (nl.find("_a_ab") != std::string::npos || (gltf_blend && !cutout))
+                blend_out.push_back(raylib_idx);
+            if (nl.find("cullnone") != std::string::npos)
+                twosided_out.push_back(raylib_idx);
         }
     }
     return result;
@@ -158,22 +195,49 @@ static void normalize_face_mesh_size(ray::Mesh& mesh, float target_size) {
 
 void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, bool normalize_face_scale) {
     ray::Model model = ray::LoadModel(model_path.string().c_str());
-    for (int m = 0; m < model.meshCount; m++) {
-        auto& mesh = model.meshes[m];
-        if (mesh.colors == nullptr) continue;
-        for (int v = 0; v < mesh.vertexCount * 4; v++) mesh.colors[v] = 255;
-        ray::UpdateMeshBuffer(mesh, 3, mesh.colors, mesh.vertexCount * 4, 0);
+    // The vertex colours stay as shipped: the main shader does not tint by them, and the black
+    // line pass reads its per-vertex thickness from the green channel.
+
+    std::vector<int> recolor_indices, additive_indices, cutout_indices, blend_indices, twosided_indices;
+    int face_material_index = -1;
+    auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, cutout_indices, blend_indices, twosided_indices);
+
+    // Material indices come from the GLB's own JSON and are not guaranteed to line up
+    // with what raylib actually imported (e.g. LoadModel failure, fewer materials).
+    auto valid_material = [&](int idx) { return idx >= 0 && idx < model.materialCount; };
+    if (!valid_material(face_material_index)) face_material_index = -1;
+    auto filter_materials = [&](std::vector<int>& v) {
+        v.erase(std::remove_if(v.begin(), v.end(), [&](int idx) { return !valid_material(idx); }), v.end());
+    };
+    filter_materials(recolor_indices);
+    filter_materials(additive_indices);
+    filter_materials(cutout_indices);
+    filter_materials(blend_indices);
+    filter_materials(twosided_indices);
+    for (auto it = material_indices.begin(); it != material_indices.end(); ) {
+        if (!valid_material(it->second)) it = material_indices.erase(it);
+        else ++it;
     }
 
-    std::vector<int> recolor_indices, additive_indices, force_opaque_indices;
-    int face_material_index = -1;
-    auto material_indices = parse_glb_material_indices(model_path.string(), recolor_indices, face_material_index, additive_indices, force_opaque_indices);
-
-    if (normalize_face_scale && face_material_index != -1) {
+    if (face_material_index != -1) {
+        // head/body parts always get the standard 0.137 plate; a costume keeps its own plate
+        // (some are deliberately small) but never a larger one -- cos 30 (鏡もち) and cos 9
+        // ship a 0.18 plate that overflows the drum head.
         constexpr float COS_FACE_PLANE_SIZE = 0.137f;
-        for (int m = 0; m < model.meshCount; m++)
-            if (model.meshMaterial[m] == face_material_index)
-                normalize_face_mesh_size(model.meshes[m], COS_FACE_PLANE_SIZE);
+        for (int m = 0; m < model.meshCount; m++) {
+            if (model.meshMaterial[m] != face_material_index) continue;
+            auto& mesh = model.meshes[m];
+            float minx = 1e9f, maxx = -1e9f, miny = 1e9f, maxy = -1e9f;
+            for (int v = 0; v < mesh.vertexCount; v++) {
+                minx = std::min(minx, mesh.vertices[v * 3]); maxx = std::max(maxx, mesh.vertices[v * 3]);
+                miny = std::min(miny, mesh.vertices[v * 3 + 1]); maxy = std::max(maxy, mesh.vertices[v * 3 + 1]);
+            }
+            const float size = std::max(maxx - minx, maxy - miny);
+            if (normalize_face_scale || size > COS_FACE_PLANE_SIZE * 1.02f) {
+                normalize_face_mesh_size(mesh, COS_FACE_PLANE_SIZE);
+                ray::UpdateMeshBuffer(mesh, 0, mesh.vertices, mesh.vertexCount * 3 * (int)sizeof(float), 0);
+            }
+        }
     }
 #if defined(PLATFORM_ANDROID) || defined(OURTAIKO_PLATFORM_IOS)
     if (face_material_index != -1 && face_shader.id != 0)
@@ -182,20 +246,17 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     additive_indices.erase(
         std::remove(additive_indices.begin(), additive_indices.end(), face_material_index),
         additive_indices.end());
+    blend_indices.erase(
+        std::remove(blend_indices.begin(), blend_indices.end(), face_material_index),
+        blend_indices.end());
     for (int idx : additive_indices)
         model.materials[idx].maps[ray::MATERIAL_MAP_DIFFUSE].color = {255, 255, 255, 255};
-    for (int idx : force_opaque_indices) {
-        auto& map = model.materials[idx].maps[ray::MATERIAL_MAP_DIFFUSE];
-        if (map.texture.id != 0) {
-            ray::Image img = ray::LoadImageFromTexture(map.texture);
-            ray::ImageFormat(&img, ray::PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
-            unsigned char* px = (unsigned char*)img.data;
-            for (int p = 0; p < img.width * img.height; p++) px[p * 4 + 3] = 255;
-            ray::UnloadTexture(map.texture);
-            map.texture = ray::LoadTextureFromImage(img);
-            ray::UnloadImage(img);
-        }
-    }
+    // Alpha-tested materials: the textures are binary alpha with black RGB under the
+    // transparent texels (fins, tentacles, hair tips). Forcing alpha to 255 painted all of
+    // that solid black; blending them would need back-to-front sorting. An alpha test gives
+    // the cabinet's cutout look with plain depth writes.
+    if (cutout_shader.id != 0)
+        for (int i = 0; i < model.materialCount; i++) model.materials[i].shader = cutout_shader;
 
     ray::Model glb_model = ray::LoadModel(anim_path.string().c_str());
     int anim_count = 0;
@@ -207,15 +268,17 @@ void Chara3D::load_part(const fs::path& model_path, const fs::path& anim_path, b
     part_material_indices.push_back(std::move(material_indices));
     part_recolor_indices.push_back(std::move(recolor_indices));
     part_additive_indices.push_back(std::move(additive_indices));
-    part_force_opaque_indices.push_back(std::move(force_opaque_indices));
+    part_cutout_indices.push_back(std::move(cutout_indices));
+    part_blend_indices.push_back(std::move(blend_indices));
+    part_twosided_indices.push_back(std::move(twosided_indices));
     part_face_material_index.push_back(face_material_index);
     part_anims.push_back(anims);
     part_anim_count.push_back(anim_count);
 }
 
 static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_size_loc, int& outline_fxaa_thickness_loc,
-                          ray::Shader& null_shader, ray::Shader& face_shader, ray::Shader& outline_shader,
-                          bool& use_render_textures) {
+                          ray::Shader& null_shader, ray::Shader& face_shader, ray::Shader& cutout_shader,
+                          ray::Shader& outline_shader, bool& use_render_textures) {
     outline_fxaa_shader = load_shader("shader/pass.vs", "shader/outline_fxaa.fs");
     outline_fxaa_size_loc = ray::GetShaderLocation(outline_fxaa_shader, "texSize");
     outline_fxaa_thickness_loc = ray::GetShaderLocation(outline_fxaa_shader, "outlineThickness");
@@ -224,10 +287,8 @@ static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_siz
 
     null_shader    = load_shader(nullptr, "shader/null.fs");
     face_shader    = load_shader(nullptr, "shader/face.fs");
+    cutout_shader  = load_shader(nullptr, "shader/cutout.fs");
     outline_shader = load_shader("shader/outline.vs", "shader/outline.fs");
-    int thickness_loc = ray::GetShaderLocation(outline_shader, "outlineThickness");
-    float thickness = 0.0035f;
-    ray::SetShaderValue(outline_shader, thickness_loc, &thickness, ray::SHADER_UNIFORM_FLOAT);
 
     if (outline_fxaa_shader.id == 0)
         use_render_textures = false;
@@ -235,7 +296,7 @@ static void init_shaders(ray::Shader& outline_fxaa_shader, int& outline_fxaa_siz
 
 Chara3D::Chara3D(std::string& model_name, bool mirror, bool use_skin_config) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
-                 null_shader, face_shader, outline_shader, use_render_textures);
+                 null_shader, face_shader, cutout_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
     Chara3DConfig cfg = use_skin_config ? tex.chara_3d_config : Chara3DConfig{};
     scale = cfg.scale;
@@ -263,7 +324,7 @@ Chara3D::Chara3D(std::string& model_name, bool mirror, bool use_skin_config) {
 
 Chara3D::Chara3D(std::string& head_name, std::string& body_name, bool mirror, bool use_skin_config) {
     init_shaders(outline_fxaa_shader, outline_fxaa_size_loc, outline_fxaa_thickness_loc,
-                 null_shader, face_shader, outline_shader, use_render_textures);
+                 null_shader, face_shader, cutout_shader, outline_shader, use_render_textures);
     this->mirror = mirror;
     Chara3DConfig cfg = use_skin_config ? tex.chara_3d_config : Chara3DConfig{};
     scale = cfg.scale;
@@ -298,6 +359,7 @@ Chara3D::~Chara3D() {
     }
     ray::UnloadShader(null_shader);
     ray::UnloadShader(face_shader);
+    ray::UnloadShader(cutout_shader);
     ray::UnloadShader(outline_fxaa_shader);
     if (scene_target.id != 0) ray::UnloadRenderTexture(scene_target);
     ray::UnloadShader(outline_shader);
@@ -307,7 +369,11 @@ Chara3D::~Chara3D() {
 
 void Chara3D::set_texture(fs::path& texture_path, int part_index, int material_index) {
     ray::Texture2D old = parts[part_index].materials[material_index].maps[ray::MATERIAL_MAP_DIFFUSE].texture;
-    if (old.id != 0) ray::UnloadTexture(old);
+    // Face material textures are owned by face_textures (shared across parts and unloaded
+    // in the destructor); unloading here would double-free / use-after-free.
+    bool is_face_material = part_face_material_index[part_index] != -1 &&
+                             material_index == part_face_material_index[part_index];
+    if (old.id != 0 && !is_face_material) ray::UnloadTexture(old);
     ray::Texture tex = ray::LoadTexture(texture_path.string().c_str());
     ray::GenTextureMipmaps(&tex);
     ray::SetTextureFilter(tex, ray::TEXTURE_FILTER_BILINEAR);
@@ -478,30 +544,35 @@ void Chara3D::update(double current_ms) {
     int anim_count = part_anim_count.empty() ? 0 : part_anim_count[0];
     if (anim_count > 0) {
         int ai = static_cast<int>(anim_index);
-        double ms_per_beat = 60000.0 / bpm;
-        if (anim_index == AnimIndex::DON_NORMAL || anim_index == AnimIndex::DON_SABI) ms_per_beat *= 3;
-        if (anim_index == AnimIndex::DON_BALLOON_LOOP) ms_per_beat /= 2;
-        double ms_per_frame = ms_per_beat / part_anims[0][ai].keyframeCount;
-        if (current_ms - last_frame_ms >= ms_per_frame) {
-            int loop_frames = part_anims[0][ai].keyframeCount - 1;
-            last_frame_ms = current_ms;
+        const int kf = part_anims[0][ai].keyframeCount;
+        if (bpm > 0.0f && kf > 0) {
+            double ms_per_beat = 60000.0 / bpm;
+            if (anim_index == AnimIndex::DON_NORMAL || anim_index == AnimIndex::DON_SABI) ms_per_beat *= 3;
+            if (anim_index == AnimIndex::DON_BALLOON_LOOP) ms_per_beat /= 2;
+            double ms_per_frame = ms_per_beat / kf;
+            if (current_ms - last_frame_ms >= ms_per_frame) {
+                int loop_frames = kf - 1;
+                last_frame_ms = current_ms;
 
-            if (loop_frames <= 0) {
-                if (!is_looping) {
-                    set_anim(prev_anim_idx);
-                    is_looping = true;
-                }
-            } else {
-                anim_frame = (anim_frame + 1) % loop_frames;
-                // UpdateModelAnimation CPU-skins and uploads position/normal
-                // buffers to the GPU itself; no manual UpdateMeshBuffer needed
-                for (size_t p = 0; p < parts.size(); p++)
-                    ray::UpdateModelAnimation(parts[p], part_anims[p][ai], anim_frame);
-                render_dirty = true;
+                if (loop_frames <= 0) {
+                    if (!is_looping) {
+                        set_anim(prev_anim_idx);
+                        is_looping = true;
+                    }
+                } else {
+                    anim_frame = (anim_frame + 1) % loop_frames;
+                    // UpdateModelAnimation CPU-skins and uploads position/normal
+                    // buffers to the GPU itself; no manual UpdateMeshBuffer needed
+                    for (size_t p = 0; p < parts.size(); p++) {
+                        if (ai >= part_anim_count[p]) continue;
+                        ray::UpdateModelAnimation(parts[p], part_anims[p][ai], anim_frame);
+                    }
+                    render_dirty = true;
 
-                if (!is_looping && anim_frame == loop_frames - 1) {
-                    set_anim(prev_anim_idx);
-                    is_looping = true;
+                    if (!is_looping && anim_frame == loop_frames - 1) {
+                        set_anim(prev_anim_idx);
+                        is_looping = true;
+                    }
                 }
             }
         }
@@ -522,6 +593,8 @@ void Chara3D::draw_outline(float x, float y) {
         for (int i = 0; i < parts[p].materialCount; i++) {
             saved[p][i] = parts[p].materials[i].shader;
             bool is_face = (part_face_material_index[p] != -1 && i == part_face_material_index[p] && null_shader.id != 0);
+            // additive glows (_AA_ADD) and alpha-blended sheets (_A_AB) have no silhouette to
+            // outline; a hull under them is a black box seen through the transparent texels
             parts[p].materials[i].shader = is_face ? null_shader : outline_shader;
         }
     }
@@ -534,13 +607,55 @@ void Chara3D::draw_outline(float x, float y) {
         parts[p].transform = rot;
     }
 
-    rlSetCullFace(RL_CULL_FACE_FRONT);
-    // scale is in 1280x720 virtual units; the camera maps the skin's virtual
-    // canvas to the window, so follow the skin resolution or the model
-    // shrinks relative to everything else on hi-res skins.
-    for (auto& part : parts)
-        ray::DrawModel(part, {x, y, 400.0f}, scale * draw_scale * tex.screen_scale, ray::WHITE);
-    rlSetCullFace(RL_CULL_FACE_BACK);
+    {
+        // Black line, drawn after the model: screen-space push along the view normal, a depth
+        // push back, facing test in the shader. 2.5 px at 720p, scaled with the output; the
+        // depth push keeps the line behind the surface it belongs to even on receding slopes.
+        // Three steps:
+        //  1. the line of the camera-facing vertices (the crease and cut-out lines);
+        //  2. the model's back faces written to the depth buffer only, so that step 3 can only
+        //     show up outside the model. An inside-out part (a single-sided glass dome, a head
+        //     shell with inward normals) has its near side culled in the model pass, and
+        //     without this the lines of everything behind that side would paint over it;
+        //  3. the line of the vertices facing away, which closes the silhouette where the
+        //     front rings carry no line weight (the body's rim by the drum head) and on coarse
+        //     small parts (the feet): it is behind the model everywhere but the overhang.
+        const float thickness_px = 2.5f * (float)ray::GetRenderHeight() / 720.0f;
+        float param[4] = {thickness_px, 0.04f, 0.02f, 0.0f};   // thickness px; base depth push and cap of the slope push (model units); 0 = front faces, 1 = back faces
+        float size[2]  = {(float)ray::GetRenderWidth(), (float)ray::GetRenderHeight()};
+        if (outline_param_loc < 0) outline_param_loc = ray::GetShaderLocation(outline_shader, "outlineParam");
+        if (outline_size_loc < 0)  outline_size_loc  = ray::GetShaderLocation(outline_shader, "screenSize");
+        ray::SetShaderValue(outline_shader, outline_param_loc, param, ray::SHADER_UNIFORM_VEC4);
+        ray::SetShaderValue(outline_shader, outline_size_loc, size, ray::SHADER_UNIFORM_VEC2);
+        // scale is in 1280x720 virtual units; the camera maps the skin's virtual
+        // canvas to the window, so follow the skin resolution or the model
+        // shrinks relative to everything else on hi-res skins.
+        const float draw_size = scale * draw_scale * tex.screen_scale;
+        rlDisableBackfaceCulling();
+        for (auto& part : parts)
+            ray::DrawModel(part, {x, y, 400.0f}, draw_size, ray::WHITE);
+        rlEnableBackfaceCulling();
+
+        for (size_t p = 0; p < parts.size(); p++)
+            for (int i = 0; i < parts[p].materialCount; i++)
+                parts[p].materials[i].shader = saved[p][i];
+        rlColorMask(false, false, false, false);
+        rlSetCullFace(RL_CULL_FACE_FRONT);
+        for (size_t p = 0; p < parts.size(); p++)
+            draw_model_face_last(parts[p], part_face_material_index[p], part_blend_indices[p], part_twosided_indices[p], {x, y, 400.0f}, draw_size);
+        rlSetCullFace(RL_CULL_FACE_BACK);
+        rlColorMask(true, true, true, true);
+        for (size_t p = 0; p < parts.size(); p++)
+            for (int i = 0; i < parts[p].materialCount; i++)
+                parts[p].materials[i].shader = (part_face_material_index[p] != -1 && i == part_face_material_index[p] && null_shader.id != 0) ? null_shader : outline_shader;
+
+        param[3] = 1.0f;
+        ray::SetShaderValue(outline_shader, outline_param_loc, param, ray::SHADER_UNIFORM_VEC4);
+        rlDisableBackfaceCulling();
+        for (auto& part : parts)
+            ray::DrawModel(part, {x, y, 400.0f}, draw_size, ray::WHITE);
+        rlEnableBackfaceCulling();
+    }
 
     for (size_t p = 0; p < parts.size(); p++) {
         parts[p].transform = saved_transform[p];
@@ -558,7 +673,7 @@ void Chara3D::draw_3d(float x, float y) {
         parts[p].transform = rot;
     }
     for (size_t p = 0; p < parts.size(); p++)
-        draw_model_face_last(parts[p], part_face_material_index[p], {x, y, 400.0f}, scale * draw_scale * tex.screen_scale);
+        draw_model_face_last(parts[p], part_face_material_index[p], part_blend_indices[p], part_twosided_indices[p], {x, y, 400.0f}, scale * draw_scale * tex.screen_scale);
     for (size_t p = 0; p < parts.size(); p++)
         parts[p].transform = saved[p];
 }
@@ -614,8 +729,8 @@ void Chara3D::draw(float x, float y, float scale_mul) {
         ray::ClearBackground(ray::BLANK);
         ray::BeginBlendMode(ray::BLEND_ALPHA);
         ray::BeginMode3D(cam3d);
-        draw_outline(x, y);
         draw_3d(x, y);
+        draw_outline(x, y);
         ray::EndMode3D();
         ray::EndBlendMode();
         ray::EndTextureMode();

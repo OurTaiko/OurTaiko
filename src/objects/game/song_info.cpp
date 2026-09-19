@@ -5,7 +5,7 @@
 static float skin_outline(const SkinInfo& s) { return s.outline >= 0 ? s.outline : 5.0f; }
 
 SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bool show_subtitle, int genre, int song_num, int song_total, const std::string& maker)
-    : song_name(song_name), genre(genre) {
+    : song_name(song_name), genre(genre >= 0 && genre < 9 ? genre : 0) {
 
     song_title = std::make_unique<OutlinedText>(song_name, tex.skin_config[SC::SONG_INFO].font_size, ray::WHITE, ray::BLACK, false,
                                                 skin_outline(tex.skin_config[SC::SONG_INFO]));
@@ -22,16 +22,17 @@ SongInfo::SongInfo(const std::string& song_name, const std::string& subtitle, bo
         song_num, plate_cfg ? plate_cfg->outline : -1.0f);
     if (song_total > 0 && tex.skin_entry("song_num_max"))
         song_max = std::make_unique<SongNum>(song_total, "song_num_max");
-    fade = (FadeAnimation*)tex.get_animation(3);
+    fade = dynamic_cast<FadeAnimation*>(tex.get_animation(3));
 }
 
 void SongInfo::update(double current_ms) {
-    fade->update(current_ms);
+    if (fade) fade->update(current_ms);
     if (rotation_started_at < 0) rotation_started_at = current_ms;
     showing_maker = show_maker_credit(bool(song_subtitle), bool(maker_credit), current_ms - rotation_started_at);
 }
 
 void SongInfo::draw() {
+    if (!fade) return;
     float text_x = tex.skin_config[SC::SONG_INFO].x;
     float text_y = tex.skin_config[SC::SONG_INFO].y - song_title->height / 2.0f;
 
@@ -43,9 +44,9 @@ void SongInfo::draw() {
 
     auto* credit = showing_maker ? maker_credit.get() : song_subtitle.get();
     if (const SkinInfo* plate = tex.skin_entry("song_num_game")) {
-        song_title->draw({.x=title_x, .y=text_y, .fade=1.0});
+        song_title->draw({.x=title_x, .y=text_y, .fade=1 - fade->attribute});
         if (credit && tex.skin_config[SC::SONG_INFO_SUBTITLE].font_size > 0) {
-            credit->draw({.x=text_x - credit->width, .y=tex.skin_config[SC::SONG_INFO_SUBTITLE].y - credit->height / 2.0f, .fade=1.0});
+            credit->draw({.x=text_x - credit->width, .y=tex.skin_config[SC::SONG_INFO_SUBTITLE].y - credit->height / 2.0f, .fade=1 - fade->attribute});
         }
         if (genre < 9) {
             tex.draw_texture(SONG_INFO::GENRE, {.frame = genre, .fade = 1 - fade->attribute,});
@@ -78,7 +79,15 @@ void SongInfo::draw() {
 }
 
 SongNum::SongNum(int song_num, float outline_override) {
-    std::string song_format = tex.skin_config[SC::SONG_NUM].text[global_data.config->general.language];
+    static const SkinInfo default_info{};
+    auto cfg_it = tex.skin_config.find(SC::SONG_NUM);
+    const SkinInfo& cfg = cfg_it != tex.skin_config.end() ? cfg_it->second : default_info;
+
+    std::string song_format;
+    auto it = cfg.text.find(global_data.config->general.language);
+    if (it != cfg.text.end()) song_format = it->second;
+    else if (!cfg.text.empty()) song_format = cfg.text.begin()->second;
+    else song_format = "{0}";
     size_t pos = song_format.find("{0}");
     if (pos != std::string::npos) {
         song_format.replace(pos, 3, std::to_string(song_num));
@@ -89,16 +98,20 @@ SongNum::SongNum(int song_num, float outline_override) {
     } else {
         outline_color = ray::BLACK;
     }
-    text = std::make_unique<OutlinedText>(song_format, tex.skin_config[SC::SONG_NUM].font_size, ray::WHITE, outline_color, false,
+    text = std::make_unique<OutlinedText>(song_format, cfg.font_size, ray::WHITE, outline_color, false,
                                           outline_override >= 0 ? outline_override
-                                                                : skin_outline(tex.skin_config[SC::SONG_NUM]));
+                                                                : skin_outline(cfg));
     width = text->width;
     height = text->height;
 }
 
 SongNum::SongNum(int value, const std::string& config_key) {
     const SkinInfo* cfg = tex.skin_entry(config_key);
-    if (!cfg) return;
+    if (!cfg) {
+        width = 0.0f;
+        height = 0.0f;
+        return;
+    }
     std::string fmt;
     auto it = cfg->text.find(global_data.config->general.language);
     if (it != cfg->text.end()) fmt = it->second;

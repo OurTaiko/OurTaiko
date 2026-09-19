@@ -2,10 +2,18 @@
 #include "../../libs/texture.h"
 #include "../../libs/global_data.h"
 #include <cmath>
+#include <stdexcept>
+
+namespace {
+    constexpr int COMBO_STRETCH_ANIM_ID = 5;
+}
 
 Combo::Combo(int combo, double current_ms)
     : combo(combo) {
-    stretch = (TextStretchAnimation*)tex.get_animation(5, true);
+    stretch = dynamic_cast<TextStretchAnimation*>(tex.get_animation(COMBO_STRETCH_ANIM_ID, true));
+    if (stretch == nullptr) {
+        throw std::runtime_error("combo stretch animation missing or of unexpected type");
+    }
     color = {ray::Fade(ray::WHITE, 1), ray::Fade(ray::WHITE, 1), ray::Fade(ray::WHITE, 1)};
     glimmer_map[0] = 0;
     glimmer_map[1] = 0;
@@ -14,8 +22,8 @@ Combo::Combo(int combo, double current_ms)
     cycle_time = total_time * 2;
     start_times = {
                 current_ms,
-                current_ms + (2.0f / 3.0f) * cycle_time,
-                current_ms + (4.0f / 3.0f) * cycle_time
+                current_ms - (2.0f / 3.0f) * cycle_time,
+                current_ms - (4.0f / 3.0f) * cycle_time
     };
 }
 
@@ -31,12 +39,8 @@ void Combo::update(double current_ms, int curr_combo) {
     stretch->update(current_ms);
 
     for (size_t i = 0; i < 3; i++) {
-        double elapsed_time = current_ms - start_times[i];
-        if (elapsed_time > cycle_time) {
-            double cycles_completed = std::floor(elapsed_time / cycle_time);
-            start_times[i] += cycles_completed * cycle_time;
-            elapsed_time = current_ms - start_times[i];
-        }
+        double elapsed_time = std::fmod(current_ms - start_times[i], cycle_time);
+        if (elapsed_time < 0) elapsed_time += cycle_time;
         float fade;
         if (elapsed_time <= total_time) {
             glimmer_map[i] = -int(elapsed_time / 16.67);
@@ -67,8 +71,13 @@ void Combo::draw(float y) {
         return tex.textures.find((uint32_t)id) != tex.textures.end();
     };
     TexID digit_tex = COMBO::COUNTER;
-    if (gold)        digit_tex = (tiers && have(COMBO::COUNTER_GOLD)) ? COMBO::COUNTER_GOLD : COMBO::COUNTER_100;
-    else if (silver) digit_tex = COMBO::COUNTER_100;
+    if (gold) {
+        digit_tex = have(COMBO::COUNTER_GOLD) ? COMBO::COUNTER_GOLD
+                  : have(COMBO::COUNTER_100)  ? COMBO::COUNTER_100
+                  : COMBO::COUNTER;
+    } else if (silver) {
+        digit_tex = have(COMBO::COUNTER_100) ? COMBO::COUNTER_100 : COMBO::COUNTER;
+    }
 
     float margin;
     float total_width;
@@ -97,7 +106,7 @@ void Combo::draw(float y) {
         for (size_t j = 0; j < glimmer_positions.size(); j++) {
             auto [x, y_pos] = glimmer_positions[j];
             for (int i = 0; i < 3; i++) {
-                tex.draw_texture(COMBO::GLEAM, {.color=color[j], .x=x+(i*tex.skin_config[SC::COMBO_MARGIN].x), .y=y+y_pos+glimmer_map[j]});
+                tex.draw_texture(COMBO::GLEAM, {.color=color[j], .x=x+(i*margin), .y=y+y_pos+glimmer_map[j]});
             }
         }
     }

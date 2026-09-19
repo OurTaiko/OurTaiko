@@ -58,7 +58,11 @@ bool find_pack(const std::vector<uint8_t>& file, size_t& pack, size_t& pack_size
         return false;
     }
 
-    size_t pos = 0x14 + read_le32(file.data() + 0x10);
+    size_t pos = (size_t)0x14 + read_le32(file.data() + 0x10);
+    if (pos > file.size()) {
+        spdlog::warn("gen4 audio: BANKTOC size out of range");
+        return false;
+    }
     pack = 0; pack_size = 0;
     while (pos + 8 <= file.size()) {
         uint32_t size = read_le32(file.data() + pos + 4);
@@ -70,7 +74,7 @@ bool find_pack(const std::vector<uint8_t>& file, size_t& pack, size_t& pack_size
             pack_size = size;
             break;
         }
-        pos += 8 + size;
+        pos += (size_t)8 + (size_t)size;   // avoid 32-bit wrap / no-progress loop
     }
     if (!pack || pack + pack_size > file.size()) {
         spdlog::warn("gen4 audio: no PACK chunk");
@@ -103,6 +107,12 @@ bool parse_container(const std::vector<uint8_t>& file, size_t pack, size_t pack_
     out.num_samples    = (int)read_be32(fmt + 8);
     out.block_size     = read_be16(fmt + 0x10);
     out.block_samples  = read_be16(fmt + 0x12);
+    if (out.sample_rate < 8000 || out.sample_rate > 192000 ||
+        out.num_samples < 0) {
+        spdlog::warn("gen4 audio: implausible stream header ({} Hz, {} samples)",
+                     out.sample_rate, out.num_samples);
+        return false;
+    }
 
     if (flags != 0) {
         spdlog::warn("gen4 audio: stream is flagged {}, expected plain", flags);
@@ -123,8 +133,13 @@ bool parse_container(const std::vector<uint8_t>& file, size_t pack, size_t pack_
     }
     out.data_size   = read_be32(p + sdat + 4);
     out.data_offset = pack + sdat + 8;
-    if (out.data_offset + out.data_size > file.size())
-        out.data_size = file.size() - out.data_offset;
+    const size_t pack_end = std::min(pack + pack_size, file.size());
+    if (out.data_offset > pack_end) {
+        spdlog::warn("gen4 audio: sdat starts past the PACK chunk");
+        return false;
+    }
+    if (out.data_offset + out.data_size > pack_end)
+        out.data_size = pack_end - out.data_offset;
 
     return true;
 }
@@ -167,12 +182,17 @@ bool decode_idsp(const std::vector<uint8_t>& file, size_t pack, size_t pack_size
     uint32_t data_size  = be(0x2C);   // per channel
 
     if (channels < 1 || channels > 2 || rate <= 0 || samples == 0 ||
+        hdr_size < 0x44 ||
         (size_t)hdr_off + (size_t)channels * hdr_size > pack_size ||
         (size_t)data_off + (size_t)channels * data_size > pack_size) {
         spdlog::warn("gen4 audio: IDSP stream shape not understood");
         return false;
     }
     if (interleave == 0) interleave = data_size;   // planar: one block each
+    if (interleave < 8) {
+        spdlog::warn("gen4 audio: IDSP interleave {} not usable", interleave);
+        return false;
+    }
 
     std::vector<IdspChannel> chans(channels);
     for (int c = 0; c < channels; c++) {
@@ -199,8 +219,10 @@ bool decode_idsp(const std::vector<uint8_t>& file, size_t pack, size_t pack_size
         uint32_t block_bytes = std::min<uint32_t>(interleave, data_size - b * interleave);
         uint32_t block_frames = block_bytes / 8;
         for (int c = 0; c < channels; c++) {
-            const uint8_t* src = p + data_off +
-                ((size_t)b * channels + c) * interleave;
+            const size_t src_off = data_off +
+                ((size_t)b * channels + c) * (size_t)interleave;
+            if (src_off + block_bytes > pack_size) break;   // malformed: stop early
+            const uint8_t* src = p + src_off;
             for (uint32_t f = 0; f < block_frames; f++)
                 idsp_decode_frame(src + f * 8, chans[c], pcm[c].data() + f * 14);
         }
@@ -244,6 +266,13 @@ bool decode_nus3bank(const fs::path& path, DecodedAudio& out) {
     }
     Bnsf info;
     if (!parse_container(file, pack, pack_size, info)) return false;
+
+    if (info.block_size % info.channels != 0 ||
+        info.block_size / info.channels <= 0) {
+        spdlog::warn("gen4 audio: block size {} not usable for {} ch",
+                     info.block_size, info.channels);
+        return false;
+    }
 
     // One decoder per channel, each fed its own frames: the channels are
     // interleaved a whole frame at a time, not sample by sample.

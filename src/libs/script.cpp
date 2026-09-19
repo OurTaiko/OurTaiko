@@ -2,6 +2,7 @@
 
 #include <string_view>
 #include <cstring>
+#include <algorithm>
 #include "global_data.h"
 #include "text.h"
 #include "audio.h"
@@ -11,7 +12,18 @@
 #include "../objects/enums.h"
 #include <spdlog/spdlog.h>
 
+static std::optional<EaseType> parse_ease_type(const sol::optional<std::string>& ease_str) {
+    if (!ease_str) return std::nullopt;
+    if (ease_str == "quadratic") return EaseType::Quadratic;
+    if (ease_str == "cubic") return EaseType::Cubic;
+    if (ease_str == "exponential") return EaseType::Exponential;
+    spdlog::error("Unknown ease type: {}", ease_str.value());
+    return std::nullopt;
+}
+
 static SessionData& current_session() {
+    static SessionData fallback{};
+    if (global_data.session_data.empty()) return fallback;
     int idx = (int)global_data.player_num;
     if (idx < 0 || idx >= (int)global_data.session_data.size()) idx = 0;
     return global_data.session_data[idx];
@@ -95,14 +107,20 @@ static bool same_params(const DrawTextureParams& a, const DrawTextureParams& b) 
 // fills the gaps, the same way its graphics do.
 void ScriptManager::index_scripts(const fs::path& script_path) {
     std::error_code ec;
-    for (const auto& script : fs::directory_iterator(script_path, ec)) {
+    fs::directory_iterator dir(script_path, ec);
+    if (ec) {
+        spdlog::warn("Unable to index scripts in {}: {}", script_path.string(), ec.message());
+        return;
+    }
+    for (const auto& script : dir) {
         fs::path p = script.path();
         if (fs::is_directory(p)) {
             fs::path lua_file = p / (p.stem().string() + ".lua");
             if (fs::exists(lua_file) && !scripts.count(p.stem().string())) {
                 scripts[p.stem().string()] = lua_file.string();
             }
-            for (const auto& sub : fs::directory_iterator(p)) {
+            std::error_code sub_ec;
+            for (const auto& sub : fs::directory_iterator(p, sub_ec)) {
                 fs::path sub_p = sub.path();
                 if (!fs::is_directory(sub_p) && sub_p.extension() == ".lua" && sub_p.stem() != p.stem() &&
                     !scripts.count(sub_p.stem().string())) {
@@ -166,7 +184,8 @@ std::string ScriptManager::get_lua_script_path(const std::string& script_name) {
 }
 
 void ScriptManager::shutdown() {
-    script_manager.tex.unload_textures();
+    tex.unload_textures();
+    scripts.clear();
     lua.reset();
 }
 
@@ -230,8 +249,8 @@ void ScriptManager::register_lua_bindings() {
         double delay = 0.0;
         bool loop = false;
         bool lock_input = false;
-        std::optional<std::string> ease_in = std::nullopt;
-        std::optional<std::string> ease_out = std::nullopt;
+        std::optional<EaseType> ease_in = std::nullopt;
+        std::optional<EaseType> ease_out = std::nullopt;
         std::optional<double> reverse_delay = std::nullopt;
 
         if (params) {
@@ -242,11 +261,8 @@ void ScriptManager::register_lua_bindings() {
             loop = t["loop"].get_or(loop);
             lock_input = t["lock_input"].get_or(lock_input);
 
-            sol::optional<std::string> ease_in_opt = t["ease_in"];
-            if (ease_in_opt) ease_in = ease_in_opt.value();
-
-            sol::optional<std::string> ease_out_opt = t["ease_out"];
-            if (ease_out_opt) ease_out = ease_out_opt.value();
+            ease_in = parse_ease_type(t["ease_in"]);
+            ease_out = parse_ease_type(t["ease_out"]);
 
             sol::optional<double> reverse_delay_opt = t["reverse_delay"];
             if (reverse_delay_opt) reverse_delay = reverse_delay_opt.value();
@@ -262,8 +278,8 @@ void ScriptManager::register_lua_bindings() {
         bool loop = false;
         bool lock_input = false;
         std::optional<double> reverse_delay = std::nullopt;
-        std::optional<std::string> ease_in = std::nullopt;
-        std::optional<std::string> ease_out = std::nullopt;
+        std::optional<EaseType> ease_in = std::nullopt;
+        std::optional<EaseType> ease_out = std::nullopt;
 
         if (params) {
             sol::table t = params.value();
@@ -276,11 +292,8 @@ void ScriptManager::register_lua_bindings() {
             sol::optional<double> reverse_delay_opt = t["reverse_delay"];
             if (reverse_delay_opt) reverse_delay = reverse_delay_opt.value();
 
-            sol::optional<std::string> ease_in_opt = t["ease_in"];
-            if (ease_in_opt) ease_in = ease_in_opt.value();
-
-            sol::optional<std::string> ease_out_opt = t["ease_out"];
-            if (ease_out_opt) ease_out = ease_out_opt.value();
+            ease_in = parse_ease_type(t["ease_in"]);
+            ease_out = parse_ease_type(t["ease_out"]);
         }
 
         return std::make_unique<MoveAnimation>(duration, total_distance, loop, lock_input, start_position, delay, reverse_delay, ease_in, ease_out);
@@ -290,11 +303,17 @@ void ScriptManager::register_lua_bindings() {
         std::vector<std::tuple<double, double, int>> keyframes;
 
         for (size_t i = 1; i <= textures_table.size(); ++i) {
-            sol::table tex_entry = textures_table[i];
-            double start = tex_entry[1].get<double>();
-            double end = tex_entry[2].get<double>();
-            int index = tex_entry[3].get<int>();
-            keyframes.emplace_back(start, end, index);
+            sol::optional<sol::table> entry_opt = textures_table[i];
+            if (!entry_opt) continue;
+            sol::table tex_entry = entry_opt.value();
+            sol::optional<double> start = tex_entry[1];
+            sol::optional<double> end   = tex_entry[2];
+            sol::optional<int>    index = tex_entry[3];
+            if (!start || !end || !index) {
+                spdlog::error("anim.texture_change: malformed keyframe at index {}", i);
+                continue;
+            }
+            keyframes.emplace_back(start.value(), end.value(), index.value());
         }
 
         double delay = 0.0;
@@ -333,8 +352,8 @@ void ScriptManager::register_lua_bindings() {
         bool loop = false;
         bool lock_input = false;
         std::optional<double> reverse_delay = std::nullopt;
-        std::optional<std::string> ease_in = std::nullopt;
-        std::optional<std::string> ease_out = std::nullopt;
+        std::optional<EaseType> ease_in = std::nullopt;
+        std::optional<EaseType> ease_out = std::nullopt;
 
         if (params) {
             sol::table t = params.value();
@@ -347,11 +366,8 @@ void ScriptManager::register_lua_bindings() {
             sol::optional<double> reverse_delay_opt = t["reverse_delay"];
             if (reverse_delay_opt) reverse_delay = reverse_delay_opt.value();
 
-            sol::optional<std::string> ease_in_opt = t["ease_in"];
-            if (ease_in_opt) ease_in = ease_in_opt.value();
-
-            sol::optional<std::string> ease_out_opt = t["ease_out"];
-            if (ease_out_opt) ease_out = ease_out_opt.value();
+            ease_in = parse_ease_type(t["ease_in"]);
+            ease_out = parse_ease_type(t["ease_out"]);
         }
 
         return std::make_unique<TextureResizeAnimation>(duration, initial_size, loop, lock_input, final_size, delay, reverse_delay, ease_in, ease_out);
@@ -541,20 +557,26 @@ void ScriptManager::register_lua_bindings() {
             auto config_it = script_manager.tex.skin_config_by_name.find(skin_config_key);
             if (config_it == script_manager.tex.skin_config_by_name.end()) {
                 spdlog::error("Skin config key not found: {}", skin_config_key);
-                return nullptr;
+                throw sol::error("Skin config key not found: " + skin_config_key);
             }
             int font_size = config_it->second.font_size;
-            std::string text = config_it->second.text[global_data.config->general.language];
+            std::string text;
+            const auto& text_map = config_it->second.text;
+            for (const std::string& l : {global_data.config->general.language, std::string("ja"), std::string("en")}) {
+                auto t = text_map.find(l);
+                if (t != text_map.end() && !t->second.empty()) { text = t->second; break; }
+            }
+            auto to_u8 = [](int v) { return static_cast<uint8_t>(std::clamp(v, 0, 255)); };
             ray::Color color_val;
-            color_val.r = color[0];
-            color_val.g = color[1];
-            color_val.b = color[2];
-            color_val.a = color[3];
+            color_val.r = to_u8(color[0]);
+            color_val.g = to_u8(color[1]);
+            color_val.b = to_u8(color[2]);
+            color_val.a = to_u8(color[3]);
             ray::Color outline_color_val;
-            outline_color_val.r = outline_color[0];
-            outline_color_val.g = outline_color[1];
-            outline_color_val.b = outline_color[2];
-            outline_color_val.a = outline_color[3];
+            outline_color_val.r = to_u8(outline_color[0]);
+            outline_color_val.g = to_u8(outline_color[1]);
+            outline_color_val.b = to_u8(outline_color[2]);
+            outline_color_val.a = to_u8(outline_color[3]);
             std::unique_ptr<OutlinedText> ptr = std::make_unique<OutlinedText>(text, font_size, color_val, outline_color_val, is_vertical, outline_thickness, spacing);
             ptr->x_offset = config_it->second.x;
             ptr->y_offset = config_it->second.y;
@@ -565,8 +587,9 @@ void ScriptManager::register_lua_bindings() {
         std::array<int, 4> color, std::array<int, 4> outline_color,
         bool is_vertical, sol::optional<float> thickness, sol::optional<float> spacing)
         -> std::unique_ptr<OutlinedText> {
-            ray::Color c  = { (uint8_t)color[0],         (uint8_t)color[1],         (uint8_t)color[2],         (uint8_t)color[3] };
-            ray::Color oc = { (uint8_t)outline_color[0], (uint8_t)outline_color[1], (uint8_t)outline_color[2], (uint8_t)outline_color[3] };
+            auto to_u8 = [](int v) { return static_cast<uint8_t>(std::clamp(v, 0, 255)); };
+            ray::Color c  = { to_u8(color[0]),         to_u8(color[1]),         to_u8(color[2]),         to_u8(color[3]) };
+            ray::Color oc = { to_u8(outline_color[0]), to_u8(outline_color[1]), to_u8(outline_color[2]), to_u8(outline_color[3]) };
             return std::make_unique<OutlinedText>(content, font_size, c, oc, is_vertical,
                 thickness.value_or(5.0f), spacing.value_or(2.0f));
     });

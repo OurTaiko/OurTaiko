@@ -81,14 +81,25 @@ std::string getKeyString(int key_code) {
 }
 
 static int getKeyCode(const std::string& key) {
+    // Unambiguous escaped form for round-tripping key codes that have no
+    // known string representation (see getKeyStringSafe).
+    if (key.rfind("code:", 0) == 0) {
+        try {
+            return std::stoi(key.substr(5));
+        } catch (...) {
+            throw std::runtime_error("Invalid key: " + key);
+        }
+    }
+
     // Handle single alphanumeric characters
-    if (key.length() == 1 && std::isalnum(key[0])) {
-        return std::toupper(key[0]);
+    if (key.length() == 1 && std::isalnum(static_cast<unsigned char>(key[0]))) {
+        return std::toupper(static_cast<unsigned char>(key[0]));
     }
 
     // Convert to uppercase for comparison
     std::string upper_key = key;
-    std::transform(upper_key.begin(), upper_key.end(), upper_key.begin(), ::toupper);
+    std::transform(upper_key.begin(), upper_key.end(), upper_key.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
 
     // Map strings to raylib key codes
     static const std::map<std::string, int> key_map = {
@@ -424,6 +435,15 @@ static Config parse_config(const toml::table& config_file) {
     return config;
 }
 
+static std::string getKeyStringSafe(int key_code) {
+    try {
+        return getKeyString(key_code);
+    } catch (const std::runtime_error& e) {
+        spdlog::warn("{} -- saving escaped key code {}", e.what(), key_code);
+        return "code:" + std::to_string(key_code);
+    }
+}
+
 static void save_config_to(const Config& config, const fs::path& config_path) {
 
     toml::table config_table;
@@ -472,20 +492,20 @@ static void save_config_to(const Config& config, const fs::path& config_path) {
 
     // Keys
     config_table.insert("keys", toml::table{
-        {"exit_key", getKeyString(config.keys.exit_key)},
-        {"fullscreen_key", getKeyString(config.keys.fullscreen_key)},
-        {"borderless_key", getKeyString(config.keys.borderless_key)},
-        {"pause_key", getKeyString(config.keys.pause_key)},
-        {"back_key", getKeyString(config.keys.back_key)},
-        {"restart_key", getKeyString(config.keys.restart_key)}
+        {"exit_key", getKeyStringSafe(config.keys.exit_key)},
+        {"fullscreen_key", getKeyStringSafe(config.keys.fullscreen_key)},
+        {"borderless_key", getKeyStringSafe(config.keys.borderless_key)},
+        {"pause_key", getKeyStringSafe(config.keys.pause_key)},
+        {"back_key", getKeyStringSafe(config.keys.back_key)},
+        {"restart_key", getKeyStringSafe(config.keys.restart_key)}
     });
 
     // Keys 1P
     toml::array left_kat_1p, left_don_1p, right_don_1p, right_kat_1p;
-    for (int key : config.keys_1p.left_kat) left_kat_1p.push_back(getKeyString(key));
-    for (int key : config.keys_1p.left_don) left_don_1p.push_back(getKeyString(key));
-    for (int key : config.keys_1p.right_don) right_don_1p.push_back(getKeyString(key));
-    for (int key : config.keys_1p.right_kat) right_kat_1p.push_back(getKeyString(key));
+    for (int key : config.keys_1p.left_kat) left_kat_1p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_1p.left_don) left_don_1p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_1p.right_don) right_don_1p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_1p.right_kat) right_kat_1p.push_back(getKeyStringSafe(key));
 
     config_table.insert("keys_1p", toml::table{
         {"left_kat", left_kat_1p},
@@ -496,10 +516,10 @@ static void save_config_to(const Config& config, const fs::path& config_path) {
 
     // Keys 2P
     toml::array left_kat_2p, left_don_2p, right_don_2p, right_kat_2p;
-    for (int key : config.keys_2p.left_kat) left_kat_2p.push_back(getKeyString(key));
-    for (int key : config.keys_2p.left_don) left_don_2p.push_back(getKeyString(key));
-    for (int key : config.keys_2p.right_don) right_don_2p.push_back(getKeyString(key));
-    for (int key : config.keys_2p.right_kat) right_kat_2p.push_back(getKeyString(key));
+    for (int key : config.keys_2p.left_kat) left_kat_2p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_2p.left_don) left_don_2p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_2p.right_don) right_don_2p.push_back(getKeyStringSafe(key));
+    for (int key : config.keys_2p.right_kat) right_kat_2p.push_back(getKeyStringSafe(key));
 
     config_table.insert("keys_2p", toml::table{
         {"left_kat", left_kat_2p},
@@ -565,9 +585,10 @@ static void save_config_to(const Config& config, const fs::path& config_path) {
     fs::path tmp_path = config_path;
     tmp_path += ".tmp";
     {
+        std::error_code rm_ec;
         std::ofstream ofs(tmp_path, std::ios::trunc);
         if (!ofs.is_open()) {
-            spdlog::error("Failed to save config.toml");
+            spdlog::error("Failed to open {} for writing", tmp_path.string());
             return;
         }
 #ifndef PLATFORM_ANDROID
@@ -582,9 +603,10 @@ static void save_config_to(const Config& config, const fs::path& config_path) {
 #endif
         // Android's shared /sdcard storage does not support POSIX chmod.
         ofs << config_table;
-        ofs.flush();
-        if (!ofs.good()) {
-            spdlog::error("Failed to write config.toml");
+        ofs.close();
+        if (!ofs) {
+            spdlog::error("Failed to write {}", tmp_path.string());
+            fs::remove(tmp_path, rm_ec);
             return;
         }
     }
@@ -593,6 +615,8 @@ static void save_config_to(const Config& config, const fs::path& config_path) {
     fs::rename(tmp_path, config_path, ec);
     if (ec) {
         spdlog::error("Failed to save config.toml: {}", ec.message());
+        std::error_code rm_ec;
+        fs::remove(tmp_path, rm_ec);
     }
 };
 

@@ -1,5 +1,6 @@
 #include "note_arc.h"
 #include "../../libs/texture.h"
+#include <cmath>
 
 std::unordered_map<NoteArc::CacheKey, std::vector<std::pair<int, int>>, NoteArc::CacheKeyHash> NoteArc::_arc_points_cache;
 
@@ -66,7 +67,8 @@ void NoteArc::update(double current_ms) {
 
     current_progress = elapsed_time / arc_duration;
 
-    int point_index = current_progress * arc_points;
+    if (arc_points_cache == nullptr || arc_points_cache->empty()) return;
+    const std::size_t point_index = static_cast<std::size_t>(current_progress * arc_points);
     if (point_index < arc_points_cache->size()) {
         x_i = (*arc_points_cache)[point_index].first;
         y_i = (*arc_points_cache)[point_index].second;
@@ -78,7 +80,8 @@ void NoteArc::update(double current_ms) {
 
 void NoteArc::draw(float y, ray::Shader mask_shader) {
     if (is_balloon) {
-        std::shared_ptr<TextureObject> rainbow = tex.textures[BALLOON::RAINBOW];
+        const std::shared_ptr<TextureObject>& rainbow = tex.textures[BALLOON::RAINBOW];
+        if (!rainbow) return;
         float rainbow_height;
         if (player_num == PlayerNum::P2) {
             rainbow_height = -rainbow->height;
@@ -90,19 +93,17 @@ void NoteArc::draw(float y, ray::Shader mask_shader) {
         float trail_end_progress = current_progress;
 
         if (trail_end_progress > trail_start_progress) {
-            float crop_start_x = int(trail_start_progress * rainbow->width);
-            float crop_end_x = int(trail_end_progress * rainbow->width);
+            float crop_start_x = std::round(trail_start_progress * rainbow->width);
+            float crop_end_x = std::round(trail_end_progress * rainbow->width);
             float crop_width = crop_end_x - crop_start_x;
 
             if (crop_width > 0) {
                 ray::Rectangle src = {crop_start_x, 0, crop_width, rainbow_height};
-                Mirror mirror;
+                Mirror mirror = Mirror::NONE;
                 float y_pos;
                 if (player_num == PlayerNum::P2) {
-                    mirror = Mirror::VERTICAL;
                     y_pos = tex.skin_config[SC::NOTE_ARC_BALLOON_P2_Y].y;
                 } else {
-                    mirror = Mirror::NONE;
                     y_pos = 0;
                 }
                 ray::BeginShaderMode(mask_shader);

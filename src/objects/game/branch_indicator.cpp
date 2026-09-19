@@ -1,14 +1,31 @@
 #include "branch_indicator.h"
 #include "../../libs/texture.h"
+#include <algorithm>
+#include <stdexcept>
+
+namespace {
+    constexpr int BRANCH_ANIM_DIFF_DOWN = 41;
+    constexpr int BRANCH_ANIM_DIFF_UP = 42;
+    constexpr int BRANCH_ANIM_DIFF_FADE = 43;
+    constexpr int BRANCH_ANIM_LEVEL_FADE = 44;
+    constexpr int BRANCH_ANIM_LEVEL_SCALE = 45;
+
+    template <class T>
+    T* require_anim(int id) {
+        auto* a = dynamic_cast<T*>(tex.get_animation(id));
+        if (!a) throw std::runtime_error("animation " + std::to_string(id) + " has unexpected type");
+        return a;
+    }
+}
 
 BranchIndicator::BranchIndicator()
     : difficulty(BranchDifficulty::NORMAL), diff_2(BranchDifficulty::NORMAL), direction(1) {
 
-    diff_down = (MoveAnimation*)tex.get_animation(41);
-    diff_up = (MoveAnimation*)tex.get_animation(42);
-    diff_fade = (FadeAnimation*)tex.get_animation(43);
-    level_fade = (FadeAnimation*)tex.get_animation(44);
-    level_scale = (TextureResizeAnimation*)tex.get_animation(45);
+    diff_down = require_anim<MoveAnimation>(BRANCH_ANIM_DIFF_DOWN);
+    diff_up = require_anim<MoveAnimation>(BRANCH_ANIM_DIFF_UP);
+    diff_fade = require_anim<FadeAnimation>(BRANCH_ANIM_DIFF_FADE);
+    level_fade = require_anim<FadeAnimation>(BRANCH_ANIM_LEVEL_FADE);
+    level_scale = require_anim<TextureResizeAnimation>(BRANCH_ANIM_LEVEL_SCALE);
 }
 
 void BranchIndicator::update(double current_ms) {
@@ -43,10 +60,9 @@ void BranchIndicator::level_down(BranchDifficulty difficulty) {
 
 void BranchIndicator::draw(float y) {
     if (difficulty == BranchDifficulty::EXPERT) {
-        tex.draw_texture(BRANCH::EXPERT_BG, {.y=y, .fade = std::min(0.5f, (float)(1 - diff_fade->attribute))});
-    }
-    if (difficulty == BranchDifficulty::MASTER) {
-        tex.draw_texture(BRANCH::MASTER_BG, {.y=y, .fade = std::min(0.5f, (float)(1 - diff_fade->attribute))});
+        tex.draw_texture(BRANCH::EXPERT_BG, {.y=y, .fade = std::clamp(1.0f - (float)diff_fade->attribute, 0.0f, 0.5f)});
+    } else if (difficulty == BranchDifficulty::MASTER) {
+        tex.draw_texture(BRANCH::MASTER_BG, {.y=y, .fade = std::clamp(1.0f - (float)diff_fade->attribute, 0.0f, 0.5f)});
     }
 
     std::string level_texture = direction == -1 ? "level_down" : "level_up";
