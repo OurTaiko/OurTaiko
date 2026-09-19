@@ -92,6 +92,7 @@ class Handler(BaseHTTPRequestHandler):
             categories=[
                 {'id':'game','title':'Game','genre':'GAME','chartCount':1},
                 {'id':'pop','title':'Pop','genre':'J-POP','chartCount':1},
+                {'id':'anime','title':'Anime','genre':'Anime' if endpoint=='second' else 'ANIME','chartCount':1},
                 {'id':'variety','title':'Variety','genre':'VARIETY','chartCount':0}]
             if variant=='refresh' and counts['refresh:'+path]>1:
                 categories.append({'id':'classic','title':'Classic','genre':'CLASSICAL','chartCount':0})

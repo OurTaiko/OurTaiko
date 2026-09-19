@@ -1,5 +1,6 @@
 #include "../../src/libs/fanmade.h"
 #include "../../src/libs/subtitle_rotation.h"
+#include "../../src/objects/enums.h"
 #include <chrono>
 #include <future>
 #include "../../src/libs/parsers/tja.h"
@@ -63,19 +64,23 @@ void refresh_tests(const std::string& base,const fs::path& cache) {
     job.get(); check(frames>5,"slow refresh exercised frame loop");
     auto root=client.song_paths({}).front();
     auto server=fs::directory_iterator(root)->path();
-    auto game=server/"game",pop=server/"pop";
+    auto game=server/"game",pop=server/"pop",anime=server/"anime";
     check(client.folder_count(server)==1 && client.folder_count(game)==1,"initial counts from metadata");
     auto old=pop/(std::string(32,'1')+".tja");
     client.load_directory(server);
     check(client.folder_count(server)==1 && client.folder_count(game)==1 && client.folder_count(pop)==1,"multi-category server total deduplicated");
     check(fs::exists(old),"first snapshot visible");
+    auto old_anime=anime/old.filename();
+    check(client.folder_count(anime)==1 && fs::exists(old_anime),"Anime membership loaded");
     bool failed=false;
     try {client.load_directory(server);} catch(...) {failed=true;}
     check(failed && fs::exists(old) && client.chart(old).has_value(),"failed refresh preserves complete old snapshot");
     check(client.folder_count(game)==1 && client.folder_count(server)==1,"failed refresh preserves counts");
+    check(client.folder_count(anime)==1 && fs::exists(old_anime) && client.chart(old_anime).has_value(),"failed refresh preserves Anime snapshot");
     client.load_directory(server);
     check(!fs::exists(old) && !client.chart(old),"removed memberships disappear from disk and registry");
     check(client.folder_count(game)==2 && client.folder_count(pop)==0 && client.folder_count(server)==2,"reopening updates every count including zero");
+    check(client.folder_count(anime)==0 && !fs::exists(old_anime) && !client.chart(old_anime),"removed Anime membership resets count and catalog");
     client.bootstrap(config,cache);
     check(client.is_category(server/"classic"),"reentering mode refreshes category list");
     for(const auto& file:fs::recursive_directory_iterator(root)) check(file.path().extension()!=".tja","mode refresh does not preload chart lists");
@@ -103,6 +108,18 @@ int main(int argc,char** argv) {
     auto roots=client.song_paths({}); check(roots.size()==1,"catalog root");
     for(auto& f:fs::recursive_directory_iterator(roots[0])) check(f.path().extension()!=".tja","bootstrap must not materialize any charts");
     check(!client.load_directory(roots[0]),"root listing does not fetch charts");
+    if(!real) for(const auto& server:fs::directory_iterator(roots[0])) {
+        auto anime=server.path()/"anime";
+        check(client.is_category(anime) && client.folder_count(anime)==1,"API Anime category registered with count");
+        auto box=read_file(anime/"box.def");
+        check(box.find("#TITLE:Anime\n")!=std::string::npos,"API Anime title reaches folder");
+        auto start=box.find("#GENRE:");
+        check(start!=std::string::npos,"API Anime genre reaches folder");
+        start+=7;
+        auto genre=box.substr(start,box.find('\n',start)-start);
+        check(get_genre_index(genre)==GenreIndex::ANIME,"API genre resolves to native Anime style");
+        check(genre_to_ref_frame(get_genre_index(genre))==2,"Anime uses its skin frame");
+    }
     load_servers(client);
     std::vector<fs::path> paths;
     for(auto& f:fs::recursive_directory_iterator(roots[0])) if(f.path().extension()==".tja" && (real||f.path().parent_path().filename()=="game")) paths.push_back(f.path());
@@ -168,6 +185,10 @@ int main(int argc,char** argv) {
         check(client.chart(same)->id==client.chart(path)->id,"one chart belongs to multiple categories");
         check(client.best(same,3)->score==client.best(path,3)->score,"cross-category score identity");
         check(client.prepare(same)==playable,"cross-category download cache identity");
+        auto anime=path.parent_path().parent_path()/"anime"/path.filename();
+        check(client.chart(anime)->id==client.chart(path)->id,"Anime chart loaded from category API");
+        check(client.best(anime,3)->score==client.best(path,3)->score,"Anime shares chart score identity");
+        check(client.prepare(anime)==playable,"Anime shares download cache identity");
     }
     TJAParser parsed(playable);
     const auto audio_path=parsed.metadata.wave;
