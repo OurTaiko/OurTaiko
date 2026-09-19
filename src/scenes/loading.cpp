@@ -98,11 +98,6 @@ void LoadingScreen::load_song_hashes() {
 #endif
     scores_manager.commit();
 
-    if (fs::exists(fs::path("scores_pytaiko.db"))) {
-        scores_manager.py_taiko_import(fs::path("scores_pytaiko.db"));
-        fs::remove(fs::path("scores_pytaiko.db"));
-    }
-
     load_navigator();
     loading_complete = true;
 }
