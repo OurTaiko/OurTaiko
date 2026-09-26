@@ -12,8 +12,7 @@ import {
 } from "@/components/ui/sheet";
 
 const links = [
-  { href: "#products", label: "我们的产品" },
-  { href: "#about", label: "关于我们" },
+  { href: "#products", label: "项目" },
   { href: "https://github.com/OurTaiko", label: "GitHub" },
   { href: "https://sso.ourtaiko.org", label: "OurTaiko 账号" },
 ];
@@ -29,11 +28,11 @@ export function Header() {
     return () => desktop.removeEventListener("change", onChange);
   }, []);
 
-  const navigation = links.map(({ href, label }, index) => (
+  const navigation = links.map(({ href, label }) => (
     <a
       key={href}
       href={href}
-      className={index === 3 ? "nav-account" : ""}
+      className={href === "https://sso.ourtaiko.org" ? "nav-account" : ""}
       {...(href.startsWith("https:")
         ? { target: "_blank", rel: "noopener noreferrer" }
         : {})}
@@ -90,7 +89,7 @@ export function Header() {
               <SheetTitle className="text-2xl font-semibold">
                 OurTaiko.
               </SheetTitle>
-              <SheetDescription>属于我们的太鼓世界</SheetDescription>
+              <SheetDescription className="sr-only">网站导航</SheetDescription>
             </SheetHeader>
             <SheetClose
               render={
@@ -107,9 +106,6 @@ export function Header() {
             <nav className="mobile-links" aria-label="移动导航">
               {navigation}
             </nav>
-            <p className="mt-auto p-3 pb-8 text-sm text-muted-foreground">
-              Our beat. Our world.
-            </p>
           </SheetContent>
         </Sheet>
       </nav>
