@@ -59,7 +59,18 @@ favicon、Apple touch icon 和各尺寸 PNG **直接复制自 Fanmade 前端的 
 
 源码仓库为私有的 [OurTaiko/OurTaiko](https://github.com/OurTaiko/OurTaiko)。
 Vercel 使用 `vercel.json` 中的 Vite 配置，固定 pnpm 12.3.4，输出目录为 `dist`。
-在 Vercel 关联此仓库后，生产分支使用 `main`；分支部署用于预览。
+Vercel 项目为 `vanillaaaa/ourtaiko`。当前 Hobby 套餐不支持连接组织名下的私有 GitHub 仓库，因此使用 CLI 直接部署，GitHub `main` 推送暂不自动触发部署。仓库保持私有。
+
+在已经登录 Vercel 的环境中：
+
+```sh
+npx vercel@59.26.0 link --yes --project ourtaiko --scope vanillaaaa
+npx vercel@59.26.0 deploy --prod --yes --scope vanillaaaa
+```
+
+发布前先完成 `pnpm build`，提交并推送 `main`，再运行上述部署命令。
+部署后确认状态为 Ready 并验证返回的 Production URL。
+`.vercel/`、`.env*` 及本地依赖均已排除在 Git 提交和部署上传之外。
 
 Vercel 的默认域名可用于查看效果。`ourtaiko.org` 与 `www.ourtaiko.org` 的自定义域名绑定和 DNS 切换需单独进行；HTML 中的 canonical 不会配置 DNS。
 
