@@ -4,12 +4,13 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.3.4",
-  "description": "OurTaiko organization homepage \u2014 React, TypeScript, Tailwind CSS and shadcn/ui.",
+  "description": "OurTaiko organization homepage — taiko-style project hub with four-language support.",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5196 --strictPort",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5196 --strictPort",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.8.0",

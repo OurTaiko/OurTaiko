@@ -1,0 +1,17 @@
+OurTaiko organization website — third-party asset notices
+
+Background, stickers and ChillRoundF font copied without modification from
+OurTaikoPlay_Website/public/assets/donder/ into public/assets/donder/.
+Original source: https://github.com/luluxia/donder-tool
+Source commit: 1e46215b8dc9b8ed77370f6ea5e22c5201bc57b1
+Files: bg.webp, sticker_1.png, sticker_2.png, ChillRoundF.woff2, UPSTREAM-README.md
+Upstream image credits: https://www.spriters-resource.com/arcade/taikonotatsujin2020version/
+Upstream notice: 本工具仅供学习交流使用，相关数据和图片版权归原作者及 Bandai Namco 所有。
+No general-purpose license file was present in the source snapshot. Third-party
+assets retain their respective owners' rights; attribution does not relicense them.
+
+Brand icons: existing OurTaiko icons, originally copied from Fanmade frontend.
+Design follows the sibling OurTaikoPlay website. Original layout reference:
+https://openumiguri.pingfanh.top/
+Product illustrations are decorative, independently authored HTML/CSS/SVG,
+not screenshots of the applications. OurTaiko is not affiliated with Bandai Namco.
