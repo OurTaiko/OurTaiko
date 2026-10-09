@@ -56,5 +56,6 @@
   "credits.upstream": "Upstream notice",
   "credits.rights": "Third-party artwork and fonts retain their respective owners’ rights. Attribution does not relicense these assets.",
   "language.label": "Choose language",
-  "language.auto": "Follow browser"
+  "language.auto": "Follow browser",
+  "community.bilibili": "Official Bilibili"
 }

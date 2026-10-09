@@ -309,8 +309,8 @@ export default function App() {
                 >
                   {t("community.github")}
                 </ExternalLink>
-                <ExternalLink href="https://sso.ourtaiko.org/">
-                  {t("account")}
+                <ExternalLink href="https://space.bilibili.com/485954888">
+                  {t("community.bilibili")}
                 </ExternalLink>
               </div>
             </div>
