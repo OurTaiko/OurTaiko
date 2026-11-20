@@ -4,8 +4,8 @@
   "lang": "zh-CN",
   "start_url": "/",
   "display": "browser",
-  "background_color": "#fffef9",
-  "theme_color": "#fffef9",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
     {
       "src": "/icons/icon-192.png",

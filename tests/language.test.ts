@@ -50,19 +50,43 @@ test("manual choice persists and auto clears it; blocked storage is safe", () =>
     else Reflect.deleteProperty(globalThis, "localStorage");
   }
 });
-test("all four translations have the same nonempty messages", () => {
-  const dictionaries = languages.map((language) =>
+for (const page of ["common", "home", "play", "net", "edit"])
+  test(`all four ${page} translations have the same nonempty messages`, () => {
+    const dictionaries = languages.map((language) =>
+      JSON.parse(
+        readFileSync(
+          new URL(`../src/locales/${page}/${language}.json`, import.meta.url),
+          "utf8",
+        ),
+      ),
+    );
+    const keys = Object.keys(dictionaries[0]).sort();
+    for (const dictionary of dictionaries) {
+      assert.deepEqual(Object.keys(dictionary).sort(), keys);
+      for (const value of Object.values(dictionary))
+        assert.ok(typeof value === "string" && value.trim().length > 0);
+    }
+  });
+
+test("every page key used in the source exists, and pages do not shadow shared keys", () => {
+  const common = Object.keys(
     JSON.parse(
       readFileSync(
-        new URL(`../src/locales/${language}.json`, import.meta.url),
+        new URL("../src/locales/common/zh-Hans.json", import.meta.url),
         "utf8",
       ),
     ),
   );
-  const keys = Object.keys(dictionaries[0]).sort();
-  for (const dictionary of dictionaries) {
-    assert.deepEqual(Object.keys(dictionary).sort(), keys);
-    for (const value of Object.values(dictionary))
-      assert.ok(typeof value === "string" && value.trim().length > 0);
+  for (const page of ["home", "play", "net", "edit"]) {
+    const keys = Object.keys(
+      JSON.parse(
+        readFileSync(
+          new URL(`../src/locales/${page}/zh-Hans.json`, import.meta.url),
+          "utf8",
+        ),
+      ),
+    );
+    for (const key of keys) assert.ok(!common.includes(key), `${page}: ${key}`);
+    assert.ok(keys.includes("page.title") && keys.includes("page.description"));
   }
 });

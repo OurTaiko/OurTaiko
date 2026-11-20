@@ -3,19 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#fffef9" />
-    <meta
-      name="description"
-      content="探索 OurTaikoPlay、OurTaikoView_Web、OurTaikoFanmade 与 OurTaikoTournaments。演奏、看谱、创作与比赛，找到属于你的节奏。"
-    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="OurTaiko 的开源太鼓游戏、谱面与玩家网站和谱面编辑器：OurTaikoPlay、OurTaikoNet 与 OurTaikoEdit。" />
     <meta property="og:type" content="website" />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:site_name" content="OurTaiko" />
-    <meta property="og:title" content="OurTaiko" />
-    <meta
-      property="og:description"
-      content="OurTaikoPlay、OurTaikoView_Web、OurTaikoFanmade 与 OurTaikoTournaments。让热爱，一起响起来。"
-    />
+    <meta property="og:title" content="OurTaiko · 让热爱，一起响起来" />
+    <meta property="og:description" content="OurTaiko 的开源太鼓游戏、谱面与玩家网站和谱面编辑器：OurTaikoPlay、OurTaikoNet 与 OurTaikoEdit。" />
     <meta property="og:url" content="https://www.ourtaiko.org/" />
     <meta name="twitter:card" content="summary" />
     <link rel="canonical" href="https://www.ourtaiko.org/" />
@@ -31,25 +27,13 @@
       <h1>OurTaiko</h1>
       <p>让热爱，一起响起来。</p>
       <ul>
-        <li>
-          <a href="https://play.ourtaiko.org/">OurTaikoPlay</a>：太鼓节奏游戏。
-        </li>
-        <li>
-          <a href="https://github.com/OurTaiko/OurTaikoView_Web"
-            >OurTaikoView_Web</a
-          >：浏览器谱面播放器，已集成于 Fanmade。
-        </li>
-        <li>
-          <a href="https://fanmade.ourtaiko.org/">OurTaikoFanmade</a
-          >：自制谱面分享平台。
-        </li>
-        <li>
-          <a href="https://tournaments.ourtaiko.org/">OurTaikoTournaments</a
-          >：太鼓赛事平台。
-        </li>
+        <li><a href="/play">OurTaikoPlay</a>：开源太鼓节奏游戏。</li>
+        <li><a href="/net">OurTaikoNet</a>：社区谱面、官方曲库与玩家主页（<a href="https://net.ourtaiko.org/">net.ourtaiko.org</a>）。</li>
+        <li><a href="/edit">OurTaikoEdit</a>：太鼓谱面编辑器。</li>
       </ul>
-      <p>启用 JavaScript 可体验完整首页与语言切换。</p>
+      <p><a href="https://github.com/OurTaiko">GitHub</a></p>
+      <p>启用 JavaScript 可查看完整页面与语言切换。</p>
     </noscript>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="/src/pages/home.tsx"></script>
   </body>
 </html>
