@@ -3,5 +3,20 @@
   "framework": "vite",
   "installCommand": "npx --yes pnpm@12.3.4 install --frozen-lockfile",
   "buildCommand": "npx --yes pnpm@12.3.4 build",
-  "outputDirectory": "dist"
+  "outputDirectory": "dist",
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/play",
+      "destination": "/play/index.html"
+    },
+    {
+      "source": "/net",
+      "destination": "/net/index.html"
+    },
+    {
+      "source": "/edit",
+      "destination": "/edit/index.html"
+    }
+  ]
 }

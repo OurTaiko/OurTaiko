@@ -1,9 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import zh from "./locales/zh-Hans.json";
-import en from "./locales/en.json";
-import ja from "./locales/ja.json";
-import ko from "./locales/ko.json";
+import common from "./locales/common";
 import {
   readPreference,
   resolveLanguage,
@@ -11,34 +8,48 @@ import {
   storageKey,
 } from "./language";
 import type { Language, Preference } from "./language";
-export type MessageKey = keyof typeof zh;
-const messages: Record<Language, Record<MessageKey, string>> = {
-  "zh-Hans": zh,
-  en,
-  ja,
-  ko,
+
+export type Messages = Record<string, string>;
+export type Bundle<M extends Messages> = Record<Language, M>;
+export type CommonKey = keyof (typeof common)["zh-Hans"];
+
+const ogLocale: Record<Language, string> = {
+  "zh-Hans": "zh_CN",
+  en: "en_US",
+  ja: "ja_JP",
+  ko: "ko_KR",
 };
-const LanguageContext = createContext<{
-  t: (key: MessageKey) => string;
+
+type Context = {
+  t: (key: string) => string;
+  language: Language;
   preference: Preference;
   selectLanguage: (value: Preference) => void;
-} | null>(null);
-export function LanguageProvider({ children }: { children: ReactNode }) {
+};
+const LanguageContext = createContext<Context | null>(null);
+
+function browserLanguages() {
+  return navigator.languages?.length
+    ? [...navigator.languages]
+    : [navigator.language];
+}
+
+/** Provides one page's messages (merged over the shared ones) in the chosen language. */
+export function LanguageProvider({
+  messages,
+  children,
+}: {
+  messages: Bundle<Messages>;
+  children: ReactNode;
+}) {
   const [preference, setPreference] = useState<Preference>(readPreference);
-  const [browserLanguages, setBrowserLanguages] = useState(() =>
-    navigator.languages?.length
-      ? [...navigator.languages]
-      : [navigator.language],
-  );
-  const language = resolveLanguage(preference, browserLanguages);
-  const t = (key: MessageKey) => messages[language][key];
+  const [browser, setBrowser] = useState(browserLanguages);
+  const language = resolveLanguage(preference, browser);
+  const dictionary: Messages = { ...common[language], ...messages[language] };
+  const t = (key: string) => dictionary[key] ?? key;
+
   useEffect(() => {
-    const onLanguage = () =>
-      setBrowserLanguages(
-        navigator.languages?.length
-          ? [...navigator.languages]
-          : [navigator.language],
-      );
+    const onLanguage = () => setBrowser(browserLanguages());
     const onStorage = (event: StorageEvent) => {
       if (event.key === storageKey || event.key === null)
         setPreference(readPreference());
@@ -50,38 +61,42 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("storage", onStorage);
     };
   }, []);
+
   useEffect(() => {
+    const page = messages[language];
     document.documentElement.lang = language;
-    document.title = messages[language]["page.title"];
+    document.title = page["page.title"];
     for (const selector of [
       'meta[name="description"]',
       'meta[property="og:description"]',
     ])
       document
         .querySelector(selector)
-        ?.setAttribute("content", messages[language]["page.description"]);
+        ?.setAttribute("content", page["page.description"]);
     document
       .querySelector('meta[property="og:title"]')
-      ?.setAttribute("content", messages[language]["page.title"]);
+      ?.setAttribute("content", page["page.title"]);
     document
       .querySelector('meta[property="og:locale"]')
-      ?.setAttribute(
-        "content",
-        { "zh-Hans": "zh_CN", en: "en_US", ja: "ja_JP", ko: "ko_KR" }[language],
-      );
-  }, [language]);
+      ?.setAttribute("content", ogLocale[language]);
+  }, [language, messages]);
+
   const selectLanguage = (value: Preference) => {
     savePreference(value);
     setPreference(value);
   };
   return (
-    <LanguageContext value={{ t, preference, selectLanguage }}>
+    <LanguageContext value={{ t, language, preference, selectLanguage }}>
       {children}
     </LanguageContext>
   );
 }
-export function useLanguage() {
+
+/** `K` names the page's keys so a misspelt key fails type checking. */
+export function useLanguage<K extends string = CommonKey>() {
   const context = useContext(LanguageContext);
   if (!context) throw new Error("LanguageProvider is required");
-  return context;
+  return context as Omit<Context, "t"> & {
+    t: (key: K | CommonKey) => string;
+  };
 }
